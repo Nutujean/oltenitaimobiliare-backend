@@ -12,25 +12,40 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+// ---------- CORS fix ----------
+const allowedOrigins = [
+  "http://localhost:5173",        // pentru dezvoltare locală
+  "https://oltenitaimobiliare.ro" // domeniul live
+];
+
 app.use(cors({
-  origin: process.env.CLIENT_ORIGIN || "*",
-  credentials: true
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error("CORS not allowed for this origin"));
+    }
+  },
+  credentials: true,
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization"]
 }));
+
 app.use(express.json());
 
-// 🔹 Configurare Multer (în memorie, nu pe disk)
-const storage = multer.memoryStorage();
+// ---------- Configurare Multer (upload temporar local) ----------
+const storage = multer.diskStorage({});
 const upload = multer({ storage });
 
-// 🔹 Configurare Cloudinary
+// ---------- Configurare Cloudinary ----------
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// 🔹 Conectare la MongoDB Atlas
+// ---------- Conectare la MongoDB ----------
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -45,27 +60,21 @@ app.get("/", (req, res) => {
   res.send("🌍 API OltenitaImobiliare funcționează!");
 });
 
-// 🔹 Adaugă un anunț cu imagini
+// Adaugă un anunț cu imagini
 app.post("/api/listings", upload.array("images", 10), async (req, res) => {
   try {
     console.log("📥 Request primit la /api/listings");
-    console.log("📝 Body:", req.body);
-    console.log("📂 Fișiere:", req.files);
+    console.log("📝 Body primit:", req.body);
+    console.log("📂 Fișiere primite:", req.files);
 
     if (!req.files || req.files.length === 0) {
+      console.error("⚠️ Nu am primit fișiere!");
       return res.status(400).json({ error: "Nu s-au trimis imagini" });
     }
 
-    // Upload direct din buffer în Cloudinary
+    // Upload la Cloudinary
     const uploadResults = await Promise.all(
-      req.files.map(file => {
-        return new Promise((resolve, reject) => {
-          cloudinary.uploader.upload_stream({ resource_type: "auto" }, (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }).end(file.buffer);
-        });
-      })
+      req.files.map(file => cloudinary.uploader.upload(file.path))
     );
 
     console.log("☁️ Răspuns Cloudinary:", uploadResults);
@@ -79,12 +88,13 @@ app.post("/api/listings", upload.array("images", 10), async (req, res) => {
     res.status(201).json(newListing);
 
   } catch (err) {
-    console.error("❌ Eroare la upload:", err);
+    console.error("❌ Eroare la upload:");
+    console.dir(err, { depth: null });
     res.status(500).json({ error: err.message || "Eroare necunoscută la upload" });
   }
 });
 
-// 🔹 Obține toate anunțurile
+// Obține toate anunțurile
 app.get("/api/listings", async (req, res) => {
   try {
     const listings = await Listing.find().sort({ createdAt: -1 });
