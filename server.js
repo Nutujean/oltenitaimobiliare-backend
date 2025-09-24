@@ -87,6 +87,21 @@ app.get("/api/listings", async (req, res) => {
     const listings = await Listing.find().sort({ createdAt: -1 });
     res.json(listings);
   } catch (err) {
+    console.error("❌ Eroare GET /api/listings:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET un anunț după ID
+app.get("/api/listings/:id", async (req, res) => {
+  try {
+    const listing = await Listing.findById(req.params.id);
+    if (!listing) {
+      return res.status(404).json({ message: "Anunțul nu există" });
+    }
+    res.json(listing);
+  } catch (err) {
+    console.error("❌ Eroare GET /api/listings/:id:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -129,6 +144,7 @@ app.post("/api/register", async (req, res) => {
     await user.save();
     res.status(201).json(user);
   } catch (err) {
+    console.error("❌ Eroare register:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -137,6 +153,19 @@ app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email, password });
-    if (!user) return res.status(401).json({ message: "Email sau parolă greșite" });
+    if (!user) {
+      return res.status(401).json({ message: "Email sau parolă greșite" });
+    }
     res.json({ message: "Login reușit", user });
-  } ca
+  } catch (err) {
+    console.error("❌ Eroare login:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================
+// START
+// ==========================
+app.listen(PORT, () => {
+  console.log(`🚀 Serverul rulează pe portul ${PORT}`);
+});
