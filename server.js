@@ -2,6 +2,8 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
 import Listing from "./models/Listing.js";
 import User from "./models/User.js";
 
@@ -11,31 +13,58 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ==========================
-// Middleware CORS
+// CORS
 // ==========================
 const allowedOrigins = [
-  "http://localhost:5173",          // pentru test local
-  "https://oltenitaimobiliare.ro",  // pentru live
+  "http://localhost:5173",
+  "https://oltenitaimobiliare.ro",
 ];
 
 app.use(
   cors({
-    origin: function (origin, callback) {
+    origin: (origin, cb) => {
       if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
+        cb(null, true);
       } else {
-        console.warn("❌ CORS blocat pentru:", origin);
-        callback(new Error("CORS blocat pentru origin: " + origin));
+        cb(new Error("CORS blocat pentru origin: " + origin));
       }
     },
     credentials: true,
   })
 );
 
+// ✅ Răspuns pentru preflight OPTIONS
+app.options("*", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.sendStatus(204);
+});
+
 app.use(express.json());
 
 // ==========================
-// Conectare MongoDB
+// Logger global (debug)
+// ==========================
+app.use((req, res, next) => {
+  console.log(`➡️ ${req.method} ${req.url} | Origin: ${req.headers.origin || "-"}`);
+  next();
+});
+
+// ==========================
+// Multer & Cloudinary
+// ==========================
+const storage = multer.diskStorage({});
+const upload = multer({ storage });
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// ==========================
+// MongoDB
 // ==========================
 mongoose
   .connect(process.env.MONGO_URI, {
@@ -46,8 +75,11 @@ mongoose
   .catch((err) => console.error("❌ Eroare MongoDB:", err));
 
 // ==========================
-// RUTE ANUNȚURI
+// RUTE
 // ==========================
+app.get("/", (req, res) => {
+  res.send("OK — API OltenitaImobiliare rulează");
+});
 
 // GET toate anunțurile
 app.get("/api/listings", async (req, res) => {
@@ -55,66 +87,56 @@ app.get("/api/listings", async (req, res) => {
     const listings = await Listing.find().sort({ createdAt: -1 });
     res.json(listings);
   } catch (err) {
-    res.status(500).json({ message: "Eroare server", error: err });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// GET un singur anunț după ID
-app.get("/api/listings/:id", async (req, res) => {
+// POST adăugare anunț cu imagini
+app.post("/api/listings", upload.array("images", 10), async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) {
-      return res.status(404).json({ message: "Anunțul nu există" });
+    console.log("📝 Body:", req.body);
+    console.log("📂 Files:", req.files);
+
+    let uploadedImages = [];
+    if (req.files && req.files.length > 0) {
+      uploadedImages = await Promise.all(
+        req.files.map((file) => cloudinary.uploader.upload(file.path))
+      );
     }
-    res.json(listing);
-  } catch (err) {
-    res.status(500).json({ message: "Eroare server", error: err });
-  }
-});
 
-// POST adaugă un nou anunț
-app.post("/api/listings", async (req, res) => {
-  try {
-    const newListing = new Listing(req.body);
+    const newListing = new Listing({
+      title: req.body.title,
+      description: req.body.description,
+      price: req.body.price,
+      category: req.body.category,
+      images: uploadedImages.map((u) => u.secure_url),
+    });
+
     await newListing.save();
     res.status(201).json(newListing);
   } catch (err) {
-    res.status(500).json({ message: "Eroare server", error: err });
+    console.error("❌ Eroare la POST /api/listings:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
 // ==========================
-// RUTE USERI
+// USERS (simplu)
 // ==========================
-
-// Register user
 app.post("/api/register", async (req, res) => {
   try {
     const user = new User(req.body);
     await user.save();
     res.status(201).json(user);
   } catch (err) {
-    res.status(500).json({ message: "Eroare la înregistrare", error: err });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Login user (simplificat, pentru demo)
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email, password }); // ⚠️ în producție folosește bcrypt!
-    if (!user) {
-      return res.status(401).json({ message: "Email sau parolă greșite" });
-    }
+    const user = await User.findOne({ email, password });
+    if (!user) return res.status(401).json({ message: "Email sau parolă greșite" });
     res.json({ message: "Login reușit", user });
-  } catch (err) {
-    res.status(500).json({ message: "Eroare la login", error: err });
-  }
-});
-
-// ==========================
-// START SERVER
-// ==========================
-app.listen(PORT, () => {
-  console.log(`🚀 Serverul rulează pe portul ${PORT}`);
-});
+  } ca
