@@ -6,7 +6,7 @@ const listingSchema = new mongoose.Schema(
     description: { type: String, required: true },
     price: { type: Number, required: true },
     category: { type: String, required: true },
-    location: { type: String, required: true },   // 📌 locația adăugată
+    location: { type: String, required: true }, // 📌 locația
     images: [{ type: String, required: true }],
   },
   { timestamps: true }
