@@ -11,9 +11,27 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ==========================
-// Middleware
+// Middleware CORS
 // ==========================
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || "*" }));
+const allowedOrigins = [
+  "http://localhost:5173",          // pentru test local
+  "https://oltenitaimobiliare.ro",  // pentru live
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn("❌ CORS blocat pentru:", origin);
+        callback(new Error("CORS blocat pentru origin: " + origin));
+      }
+    },
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
 // ==========================
@@ -41,7 +59,7 @@ app.get("/api/listings", async (req, res) => {
   }
 });
 
-// ✅ GET un singur anunț după ID
+// GET un singur anunț după ID
 app.get("/api/listings/:id", async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
@@ -66,7 +84,7 @@ app.post("/api/listings", async (req, res) => {
 });
 
 // ==========================
-// RUTE USERI (exemplu simplu)
+// RUTE USERI
 // ==========================
 
 // Register user
@@ -80,7 +98,7 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-// Login user (exemplu simplu, atenție la securitate)
+// Login user (simplificat, pentru demo)
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
