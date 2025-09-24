@@ -2,11 +2,12 @@ import mongoose from "mongoose";
 
 const listingSchema = new mongoose.Schema(
   {
-    title: { type: String, required: true },        // titlu anunț
-    description: { type: String, required: true },  // descriere
-    price: { type: Number, required: true },        // preț
-    category: { type: String, required: true },     // categorie (apartamente, case, etc.)
-    images: [{ type: String, required: true }],     // linkuri Cloudinary
+    title: { type: String, required: true },
+    description: { type: String, required: true },
+    price: { type: Number, required: true },
+    category: { type: String, required: true },
+    location: { type: String, required: true },   // 📌 locația adăugată
+    images: [{ type: String, required: true }],
   },
   { timestamps: true }
 );
