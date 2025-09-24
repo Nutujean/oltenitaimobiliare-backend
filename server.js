@@ -72,7 +72,7 @@ mongoose
     useUnifiedTopology: true,
   })
   .then(() => console.log("✅ Conectat la MongoDB Atlas"))
-  .catch((err) => console.error("❌ Eroare MongoDB:", err));
+  .catch (err) => console.error("❌ Eroare MongoDB:", err));
 
 // ==========================
 // RUTE
