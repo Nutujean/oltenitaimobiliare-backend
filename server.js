@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import morgan from "morgan";
-import authRoutes from "./routes/auth.js";
+import authRoutes from "./routes/authRoutes.js";
 import listingRoutes from "./routes/listings.js";
 
 dotenv.config();
