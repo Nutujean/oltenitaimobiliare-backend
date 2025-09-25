@@ -33,7 +33,7 @@ mongoose
 // RUTE ANUNȚURI
 // ==========================
 
-// GET toate anunțurile
+// GET toate anunțurile (vizibil public)
 app.get("/api/listings", async (req, res) => {
   try {
     const listings = await Listing.find().sort({ createdAt: -1 });
@@ -43,7 +43,7 @@ app.get("/api/listings", async (req, res) => {
   }
 });
 
-// GET un singur anunț după ID
+// GET un singur anunț după ID (vizibil public)
 app.get("/api/listings/:id", async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
@@ -56,7 +56,7 @@ app.get("/api/listings/:id", async (req, res) => {
   }
 });
 
-// POST adaugă un nou anunț (🔒 protejat cu authMiddleware)
+// POST adaugă un nou anunț (🔒 doar logați)
 app.post("/api/listings", authMiddleware, async (req, res) => {
   try {
     const newListing = new Listing(req.body);
