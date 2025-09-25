@@ -1,63 +1,42 @@
 import express from "express";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import Listing from "../models/Listing.js";
 
 const router = express.Router();
 
-// ✅ Register
-router.post("/register", async (req, res) => {
+// 🟢 GET toate anunțurile
+router.get("/", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
-
-    // verificăm dacă există deja utilizatorul
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ error: "Email deja folosit." });
-    }
-
-    // criptăm parola
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = new User({
-      name,
-      email,
-      password: hashedPassword,
-    });
-
-    await newUser.save();
-
-    res.status(201).json({ message: "Utilizator creat cu succes!" });
+    const listings = await Listing.find().sort({ createdAt: -1 });
+    res.json(listings);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Eroare GET /listings:", err);
+    res.status(500).json({ message: "Eroare server" });
   }
 });
 
-// ✅ Login
-router.post("/login", async (req, res) => {
+// 🟢 GET un anunț după ID
+router.get("/:id", async (req, res) => {
   try {
-    const { email, password } = req.body;
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ error: "Email sau parolă greșită." });
+    const listing = await Listing.findById(req.params.id);
+    if (!listing) {
+      return res.status(404).json({ message: "Anunțul nu există" });
     }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ error: "Email sau parolă greșită." });
-    }
-
-    // generăm token JWT
-    const token = jwt.sign(
-      { id: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+    res.json(listing);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Eroare GET /listings/:id:", err);
+    res.status(500).json({ message: "Eroare server" });
+  }
+});
+
+// 🟢 POST un anunț nou
+router.post("/", async (req, res) => {
+  try {
+    const newListing = new Listing(req.body);
+    await newListing.save();
+    res.status(201).json(newListing);
+  } catch (err) {
+    console.error("Eroare POST /listings:", err);
+    res.status(500).json({ message: "Eroare server" });
   }
 });
 
