@@ -1,70 +1,49 @@
 import express from "express";
 import mongoose from "mongoose";
-import cors from "cors";
 import dotenv from "dotenv";
-import multer from "multer";
-import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
+import cors from "cors";
+import jwt from "jsonwebtoken";
 import Listing from "./models/Listing.js";
+import User from "./models/User.js";
+import authMiddleware from "./middleware/authMiddleware.js";
 
 dotenv.config();
-const app = express();
 
-// ================== MIDDLEWARE ==================
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// ==========================
+// Middleware global
+// ==========================
+app.use(cors({ origin: process.env.CLIENT_ORIGIN || "*" }));
 app.use(express.json());
 
-// ✅ CORS
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://oltenitaimobiliare.ro"
-    ],
-    credentials: true,
-  })
-);
-
-// ================== MONGODB ==================
+// ==========================
+// Conectare MongoDB
+// ==========================
 mongoose
-  .connect(process.env.MONGO_URI, { dbName: "oltenitaimobiliare" })
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
   .then(() => console.log("✅ Conectat la MongoDB Atlas"))
-  .catch((err) => console.error("❌ MongoDB error:", err));
+  .catch((err) => console.error("❌ Eroare MongoDB:", err));
 
-// ================== CLOUDINARY ==================
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+// ==========================
+// RUTE ANUNȚURI
+// ==========================
 
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "oltenitaimobiliare",
-    allowed_formats: ["jpg", "png", "jpeg", "webp"],
-  },
-});
-const upload = multer({ storage });
-
-// ================== ROUTES ==================
-
-// ➡️ Test root
-app.get("/", (req, res) => {
-  res.send("✅ Backend OltenitaImobiliare funcționează!");
-});
-
-// ➡️ Get all listings
+// GET toate anunțurile
 app.get("/api/listings", async (req, res) => {
   try {
     const listings = await Listing.find().sort({ createdAt: -1 });
     res.json(listings);
   } catch (err) {
-    console.error("❌ Eroare GET /api/listings:", err.message);
-    res.status(500).json({ message: "Eroare server" });
+    res.status(500).json({ message: "Eroare server", error: err });
   }
 });
 
-// ➡️ Get listing by ID (⚡ ruta nouă!)
+// GET un singur anunț după ID
 app.get("/api/listings/:id", async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
@@ -73,39 +52,61 @@ app.get("/api/listings/:id", async (req, res) => {
     }
     res.json(listing);
   } catch (err) {
-    console.error("❌ Eroare la GET /api/listings/:id:", err.message);
     res.status(500).json({ message: "Eroare server", error: err });
   }
 });
 
-// ➡️ Add new listing
-app.post("/api/listings", upload.array("images", 15), async (req, res) => {
+// POST adaugă un nou anunț (🔒 protejat cu authMiddleware)
+app.post("/api/listings", authMiddleware, async (req, res) => {
   try {
-    const { title, description, price, category, location, phone, email } = req.body;
-
-    const images = req.files.map((file) => file.path);
-
-    const newListing = new Listing({
-      title,
-      description,
-      price,
-      category,
-      location,
-      phone,
-      email,
-      images,
-    });
-
+    const newListing = new Listing(req.body);
     await newListing.save();
     res.status(201).json(newListing);
   } catch (err) {
-    console.error("❌ Eroare POST /api/listings:", err.message);
     res.status(500).json({ message: "Eroare server", error: err });
   }
 });
 
-// ================== SERVER START ==================
-const PORT = process.env.PORT || 5000;
+// ==========================
+// RUTE USERI
+// ==========================
+
+// Register user
+app.post("/api/register", async (req, res) => {
+  try {
+    const user = new User(req.body);
+    await user.save();
+    res.status(201).json(user);
+  } catch (err) {
+    res.status(500).json({ message: "Eroare la înregistrare", error: err });
+  }
+});
+
+// Login user + JWT
+app.post("/api/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email, password }); // ⚠️ în producție folosește bcrypt!
+    if (!user) {
+      return res.status(401).json({ message: "Email sau parolă greșite" });
+    }
+
+    // ✅ Creăm token JWT
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    res.json({ message: "Login reușit", token });
+  } catch (err) {
+    res.status(500).json({ message: "Eroare la login", error: err });
+  }
+});
+
+// ==========================
+// START SERVER
+// ==========================
 app.listen(PORT, () => {
   console.log(`🚀 Serverul rulează pe portul ${PORT}`);
 });
