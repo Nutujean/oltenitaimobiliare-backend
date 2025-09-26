@@ -1,20 +1,16 @@
 import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 
-export default function authMiddleware(req, res, next) {
-  // 🔹 Extragem token-ul din header
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // "Bearer TOKEN"
-
-  if (!token) {
-    return res.status(401).json({ message: "Acces interzis. Lipsă token." });
-  }
+export const authMiddleware = async (req, res, next) => {
+  const token = req.header("Authorization")?.replace("Bearer ", "");
+  if (!token) return res.status(401).json({ error: "Nu ești autorizat" });
 
   try {
-    // 🔹 Verificăm token-ul
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // punem userul în request
+    req.user = await User.findById(decoded.id).select("-password");
+    if (!req.user) throw new Error();
     next();
   } catch (err) {
-    res.status(403).json({ message: "Token invalid sau expirat." });
+    res.status(401).json({ error: "Token invalid" });
   }
-}
+};
