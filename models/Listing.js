@@ -17,5 +17,4 @@ const listingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// 👇 verificăm dacă există deja modelul, altfel îl creăm
 export default mongoose.models.Listing || mongoose.model("Listing", listingSchema);
