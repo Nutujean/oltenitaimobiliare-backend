@@ -60,19 +60,7 @@ router.get("/my-listings", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Obține un anunț după ID
-router.get("/:id", async (req, res) => {
-  try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ error: "Anunțul nu a fost găsit" });
-    res.json(listing);
-  } catch (err) {
-    console.error("❌ Eroare la preluarea anunțului:", err);
-    res.status(500).json({ error: "Eroare server" });
-  }
-});
-
-// ✅ Căutare în baza de date (titlu, categorie, locație)
+// ✅ Căutare în baza de date — IMPORTANT: asta vine înainte de /:id
 router.get("/search", async (req, res) => {
   try {
     const { title, category, location } = req.query;
@@ -99,6 +87,18 @@ router.get("/search", async (req, res) => {
   } catch (err) {
     console.error("❌ Eroare la search:", err);
     res.status(500).json({ error: "Eroare server la căutare" });
+  }
+});
+
+// ✅ Obține un anunț după ID
+router.get("/:id", async (req, res) => {
+  try {
+    const listing = await Listing.findById(req.params.id);
+    if (!listing) return res.status(404).json({ error: "Anunțul nu a fost găsit" });
+    res.json(listing);
+  } catch (err) {
+    console.error("❌ Eroare la preluarea anunțului:", err);
+    res.status(500).json({ error: "Eroare server" });
   }
 });
 
