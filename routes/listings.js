@@ -3,7 +3,7 @@ import Listing from "../models/Listing.js";
 
 const router = express.Router();
 
-// ✅ Get toate anunțurile
+// ✅ Toate anunțurile
 router.get("/", async (req, res) => {
   try {
     const listings = await Listing.find();
@@ -13,12 +13,47 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ✅ Adaugă un anunț nou (inclusiv userEmail)
+// ✅ Anunțurile unui user (trebuie să fie deasupra lui /:id!)
+router.get("/user/:email", async (req, res) => {
+  try {
+    const listings = await Listing.find({ userEmail: req.params.email });
+    res.json(listings);
+  } catch (err) {
+    res
+      .status(500)
+      .json({ error: "Eroare la preluarea anunțurilor utilizatorului" });
+  }
+});
+
+// ✅ Un singur anunț după ID (pentru DetaliuAnunt.jsx)
+router.get("/:id", async (req, res) => {
+  try {
+    const listing = await Listing.findById(req.params.id);
+    if (!listing) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit" });
+    }
+    res.json(listing);
+  } catch (err) {
+    res.status(500).json({ error: "Eroare la preluarea anunțului" });
+  }
+});
+
+// ✅ Adaugă un anunț nou
 router.post("/", async (req, res) => {
   try {
-    console.log("📥 Date primite de la frontend:", req.body); // 👈 DEBUG
+    const {
+      title,
+      description,
+      price,
+      category,
+      location,
+      images,
+      userEmail,
+    } = req.body;
 
-    const { title, description, price, category, location, images, userEmail } = req.body;
+    if (!userEmail) {
+      return res.status(400).json({ error: "Emailul utilizatorului este necesar" });
+    }
 
     const newListing = new Listing({
       title,
@@ -27,18 +62,17 @@ router.post("/", async (req, res) => {
       category,
       location,
       images,
-      userEmail, // 👈 forțăm salvarea
+      userEmail,
     });
 
     await newListing.save();
     res.status(201).json(newListing);
   } catch (err) {
-    console.error("❌ Eroare la salvarea anunțului:", err);
     res.status(500).json({ error: "Eroare la salvarea anunțului" });
   }
 });
 
-// ✅ Șterge un anunț după ID
+// ✅ Șterge un anunț
 router.delete("/:id", async (req, res) => {
   try {
     const deleted = await Listing.findByIdAndDelete(req.params.id);
@@ -51,7 +85,7 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-// ✅ Editează un anunț după ID
+// ✅ Editează un anunț
 router.put("/:id", async (req, res) => {
   try {
     const updated = await Listing.findByIdAndUpdate(req.params.id, req.body, {
@@ -66,7 +100,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// ✅ Marchează ca rezervat / disponibil
+// ✅ Marchează / demarchează rezervat
 router.patch("/:id/rezervat", async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
