@@ -13,13 +13,25 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ✅ Adaugă un anunț nou
+// ✅ Adaugă un anunț nou (inclusiv userEmail)
 router.post("/", async (req, res) => {
   try {
-    const newListing = new Listing(req.body);
+    const { title, description, price, category, location, images, userEmail } = req.body;
+
+    const newListing = new Listing({
+      title,
+      description,
+      price,
+      category,
+      location,
+      images,
+      userEmail, // 👈 forțăm salvarea userEmail
+    });
+
     await newListing.save();
     res.status(201).json(newListing);
   } catch (err) {
+    console.error("❌ Eroare la salvarea anunțului:", err);
     res.status(500).json({ error: "Eroare la salvarea anunțului" });
   }
 });
