@@ -3,103 +3,71 @@ import Listing from "../models/Listing.js";
 
 const router = express.Router();
 
-/** GET /api/listings - toate anunțurile */
+// ✅ Get toate anunțurile
 router.get("/", async (req, res) => {
   try {
-    const listings = await Listing.find().sort({ createdAt: -1 });
+    const listings = await Listing.find();
     res.json(listings);
   } catch (err) {
-    console.error("❌ Eroare la preluarea anunțurilor:", err.message);
-    res.status(500).json({ error: "Eroare server la preluarea anunțurilor" });
+    res.status(500).json({ error: "Eroare la preluarea anunțurilor" });
   }
 });
 
-/** GET /api/listings/:id - un singur anunț */
-router.get("/:id", async (req, res) => {
-  try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) {
-      return res.status(404).json({ error: "Anunțul nu a fost găsit!" });
-    }
-    res.json(listing);
-  } catch (err) {
-    console.error("❌ Eroare la căutarea anunțului:", err.message);
-    res.status(500).json({ error: "Eroare server la căutarea anunțului" });
-  }
-});
-
-/** POST /api/listings - creează un anunț nou */
+// ✅ Adaugă un anunț nou
 router.post("/", async (req, res) => {
   try {
-    let { title, description, price, category, location, images, userEmail } = req.body;
-
-    if (!title || !description || !price || !category || !location || !userEmail) {
-      return res.status(400).json({ error: "Toate câmpurile sunt obligatorii!" });
-    }
-
-    price = Number(price);
-
-    const listing = new Listing({
-      title,
-      description,
-      price,
-      category,
-      location,
-      images: images || [],
-      userEmail,
-    });
-
-    await listing.save();
-    res.status(201).json({ message: "✅ Anunț adăugat cu succes!", listing });
+    const newListing = new Listing(req.body);
+    await newListing.save();
+    res.status(201).json(newListing);
   } catch (err) {
-    console.error("❌ Eroare la salvarea anunțului:", err.message);
-    res.status(500).json({ error: "Eroare server la salvarea anunțului" });
+    res.status(500).json({ error: "Eroare la salvarea anunțului" });
   }
 });
 
-/** PUT /api/listings/:id - actualizare completă */
-router.put("/:id", async (req, res) => {
-  try {
-    const updated = await Listing.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-    if (!updated) {
-      return res.status(404).json({ error: "Anunțul nu a fost găsit!" });
-    }
-    res.json({ message: "✅ Anunț actualizat cu succes!", updated });
-  } catch (err) {
-    console.error("❌ Eroare la actualizare:", err.message);
-    res.status(500).json({ error: "Eroare server la actualizare" });
-  }
-});
-
-/** DELETE /api/listings/:id - ștergere */
+// ✅ Șterge un anunț după ID
 router.delete("/:id", async (req, res) => {
   try {
     const deleted = await Listing.findByIdAndDelete(req.params.id);
     if (!deleted) {
-      return res.status(404).json({ error: "Anunțul nu a fost găsit!" });
+      return res.status(404).json({ error: "Anunțul nu a fost găsit" });
     }
-    res.json({ message: "✅ Anunț șters cu succes!" });
+    res.json({ message: "Anunț șters cu succes" });
   } catch (err) {
-    console.error("❌ Eroare la ștergere:", err.message);
-    res.status(500).json({ error: "Eroare server la ștergere" });
+    res.status(500).json({ error: "Eroare la ștergerea anunțului" });
   }
 });
 
-/** PATCH /api/listings/:id/rezervat - toggle disponibil/rezervat */
+// ✅ Editează un anunț după ID
+router.put("/:id", async (req, res) => {
+  try {
+    const updated = await Listing.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+    if (!updated) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit" });
+    }
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: "Eroare la actualizarea anunțului" });
+  }
+});
+
+// ✅ Marchează ca rezervat / disponibil
 router.patch("/:id/rezervat", async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ error: "Anunțul nu a fost găsit!" });
+    if (!listing) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit" });
+    }
 
-    listing.rezervat = !listing.rezervat; // schimbă între true/false
+    listing.rezervat = !listing.rezervat;
     await listing.save();
 
-    res.json({ message: "✅ Status actualizat!", listing });
+    res.json(listing);
   } catch (err) {
-    console.error("❌ Eroare la schimbarea statusului:", err.message);
-    res.status(500).json({ error: "Eroare server la schimbarea statusului" });
+    res.status(500).json({ error: "Eroare la actualizarea statusului" });
   }
 });
 
