@@ -2,12 +2,27 @@ import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
+    name: {
+      type: String,
+      required: [true, "Numele este obligatoriu"],
+      trim: true,
+    },
+    email: {
+      type: String,
+      required: [true, "Email-ul este obligatoriu"],
+      unique: true,
+      lowercase: true,
+      match: [/^\S+@\S+\.\S+$/, "Email invalid"],
+    },
+    password: {
+      type: String,
+      required: [true, "Parola este obligatorie"],
+      minlength: [6, "Parola trebuie să aibă minim 6 caractere"],
+    },
   },
   { timestamps: true }
 );
 
-// 👇 verificăm dacă există deja modelul, altfel îl creăm
-export default mongoose.models.User || mongoose.model("User", userSchema);
+const User = mongoose.model("User", userSchema);
+
+export default User;

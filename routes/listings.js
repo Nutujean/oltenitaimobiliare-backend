@@ -1,66 +1,65 @@
 import express from "express";
-import multer from "multer";
-import Listing from "../models/Listing.js";
-import { v2 as cloudinary } from "cloudinary";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 
 const router = express.Router();
 
-// Configurare multer - păstrăm fișierele în memorie pentru upload direct în Cloudinary
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
-
-// Ruta pentru adăugare anunț nou
-router.post("/", upload.array("images", 10), async (req, res) => {
+// Înregistrare utilizator
+router.post("/register", async (req, res) => {
   try {
-    console.log("📥 BODY primit:", req.body);
-    console.log("🖼️ FIȘIERE primite:", req.files?.length || 0);
+    const { name, email, password } = req.body;
 
-    const listing = new Listing({
-      title: req.body.title,
-      description: req.body.description,
-      price: req.body.price,
-      category: req.body.category,
-      location: req.body.location,
-      user: req.body.user || null,
-      images: [],
-    });
-
-    // Dacă avem fișiere, le urcăm pe Cloudinary
-    if (req.files && req.files.length > 0) {
-      for (const file of req.files) {
-        const result = await new Promise((resolve, reject) => {
-          const stream = cloudinary.uploader.upload_stream(
-            { folder: "oltenitaimobiliare" },
-            (error, uploaded) => {
-              if (error) reject(error);
-              else resolve(uploaded);
-            }
-          );
-          stream.end(file.buffer);
-        });
-
-        listing.images.push(result.secure_url);
-      }
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Toate câmpurile sunt obligatorii!" });
     }
 
-    // Salvăm anunțul în MongoDB
-    await listing.save();
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ error: "Email deja folosit!" });
+    }
 
-    console.log("✅ Anunț salvat:", listing._id);
-    res.status(201).json(listing);
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Parola trebuie să aibă minim 6 caractere!" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({ name, email, password: hashedPassword });
+    await user.save();
+
+    res.status(201).json({ message: "✅ Utilizator creat cu succes!" });
   } catch (err) {
-    console.error("❌ Eroare la salvarea anunțului:", err.message);
+    console.error("❌ Eroare la înregistrare:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Ruta pentru listarea tuturor anunțurilor
-router.get("/", async (req, res) => {
+// Login utilizator
+router.post("/login", async (req, res) => {
   try {
-    const listings = await Listing.find().sort({ createdAt: -1 });
-    res.json(listings);
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ error: "Email sau parolă incorectă!" });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(400).json({ error: "Email sau parolă incorectă!" });
+    }
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    res.json({
+      message: "✅ Autentificare reușită!",
+      token,
+      user: { id: user._id, name: user.name, email: user.email },
+    });
   } catch (err) {
-    console.error("❌ Eroare la obținerea anunțurilor:", err.message);
+    console.error("❌ Eroare la login:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
