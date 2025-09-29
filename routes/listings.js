@@ -1,66 +1,101 @@
 import express from "express";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import Listing from "../models/Listing.js";
 
 const router = express.Router();
 
-// Înregistrare utilizator
-router.post("/register", async (req, res) => {
+/**
+ * 📌 GET /api/listings
+ * Returnează toate anunțurile
+ */
+router.get("/", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: "Toate câmpurile sunt obligatorii!" });
-    }
-
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ error: "Email deja folosit!" });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ error: "Parola trebuie să aibă minim 6 caractere!" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashedPassword });
-    await user.save();
-
-    res.status(201).json({ message: "✅ Utilizator creat cu succes!" });
+    const listings = await Listing.find().sort({ createdAt: -1 });
+    res.json(listings);
   } catch (err) {
-    console.error("❌ Eroare la înregistrare:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("❌ Eroare la preluarea anunțurilor:", err.message);
+    res.status(500).json({ error: "Eroare server la preluarea anunțurilor" });
   }
 });
 
-// Login utilizator
-router.post("/login", async (req, res) => {
+/**
+ * 📌 GET /api/listings/:id
+ * Returnează un anunț după ID
+ */
+router.get("/:id", async (req, res) => {
   try {
-    const { email, password } = req.body;
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ error: "Email sau parolă incorectă!" });
+    const listing = await Listing.findById(req.params.id);
+    if (!listing) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit!" });
     }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(400).json({ error: "Email sau parolă incorectă!" });
-    }
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
-    res.json({
-      message: "✅ Autentificare reușită!",
-      token,
-      user: { id: user._id, name: user.name, email: user.email },
-    });
+    res.json(listing);
   } catch (err) {
-    console.error("❌ Eroare la login:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("❌ Eroare la căutarea anunțului:", err.message);
+    res.status(500).json({ error: "Eroare server la căutarea anunțului" });
+  }
+});
+
+/**
+ * 📌 POST /api/listings
+ * Creează un anunț nou
+ */
+router.post("/", async (req, res) => {
+  try {
+    const { title, description, price, category, location, images } = req.body;
+
+    if (!title || !description || !price || !category || !location) {
+      return res.status(400).json({ error: "Toate câmpurile sunt obligatorii!" });
+    }
+
+    const listing = new Listing({
+      title,
+      description,
+      price,
+      category,
+      location,
+      images: images || [],
+    });
+
+    await listing.save();
+    res.status(201).json({ message: "✅ Anunț adăugat cu succes!", listing });
+  } catch (err) {
+    console.error("❌ Eroare la salvarea anunțului:", err.message);
+    res.status(500).json({ error: "Eroare server la salvarea anunțului" });
+  }
+});
+
+/**
+ * 📌 PUT /api/listings/:id
+ * Actualizează un anunț
+ */
+router.put("/:id", async (req, res) => {
+  try {
+    const updated = await Listing.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
+    if (!updated) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit!" });
+    }
+    res.json({ message: "✅ Anunț actualizat cu succes!", updated });
+  } catch (err) {
+    console.error("❌ Eroare la actualizare:", err.message);
+    res.status(500).json({ error: "Eroare server la actualizare" });
+  }
+});
+
+/**
+ * 📌 DELETE /api/listings/:id
+ * Șterge un anunț
+ */
+router.delete("/:id", async (req, res) => {
+  try {
+    const deleted = await Listing.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit!" });
+    }
+    res.json({ message: "✅ Anunț șters cu succes!" });
+  } catch (err) {
+    console.error("❌ Eroare la ștergere:", err.message);
+    res.status(500).json({ error: "Eroare server la ștergere" });
   }
 });
 
