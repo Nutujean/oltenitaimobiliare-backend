@@ -1,175 +1,106 @@
 import express from "express";
+import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
-import { verifyToken } from "../middleware/auth.js";
-import multer from "multer";
-import { v2 as cloudinary } from "cloudinary";
 
 const router = express.Router();
 
-// Config upload memorie
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
+/** Helper */
+const isValidId = (id) => mongoose.isValidObjectId(id);
 
-// ✅ Adaugă un anunț nou
-router.post("/", verifyToken, upload.array("images", 15), async (req, res) => {
-  try {
-    const imageUrls = [];
-
-    if (req.files) {
-      for (const file of req.files) {
-        const uploadRes = await cloudinary.uploader.upload_stream({
-          resource_type: "image",
-        });
-        imageUrls.push(uploadRes.secure_url);
-      }
-    }
-
-    const listing = new Listing({
-      ...req.body,
-      images: imageUrls,
-      user: req.user.id,
-    });
-
-    await listing.save();
-    res.status(201).json(listing);
-  } catch (err) {
-    console.error("❌ Eroare la crearea anunțului:", err);
-    res.status(500).json({ error: "Eroare server la crearea anunțului" });
-  }
-});
-
-// ✅ Obține toate anunțurile
+/** GET /api/listings  (listare) */
 router.get("/", async (req, res) => {
   try {
-    const listings = await Listing.find().sort({ createdAt: -1 });
-    res.json(listings);
+    const { status, limit = 50 } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+
+    const items = await Listing.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Number(limit));
+    res.json(items);
   } catch (err) {
-    console.error("❌ Eroare la preluarea anunțurilor:", err);
-    res.status(500).json({ error: "Eroare server" });
+    res.status(500).json({ message: "Eroare la listare", error: err.message });
   }
 });
 
-// ✅ Obține anunțurile unui user
-router.get("/my-listings", verifyToken, async (req, res) => {
+/** POST /api/listings  (creare) */
+router.post("/", async (req, res) => {
   try {
-    const listings = await Listing.find({ user: req.user.id }).sort({ createdAt: -1 });
-    res.json(listings);
+    const payload = req.body ?? {};
+    const listing = await Listing.create({
+      title: payload.title,
+      description: payload.description,
+      price: payload.price,
+      imageUrl: payload.imageUrl,
+      images: Array.isArray(payload.images) ? payload.images : [],
+      status: payload.status || "disponibil",
+      user: payload.user || undefined,
+    });
+    res.status(201).json(listing);
   } catch (err) {
-    console.error("❌ Eroare la anunțurile userului:", err);
-    res.status(500).json({ error: "Eroare server" });
+    res.status(400).json({ message: "Eroare la creare", error: err.message });
   }
 });
 
-// ✅ Căutare (TREBUIE să fie înainte de /:id)
-router.get("/search", async (req, res) => {
-  try {
-    const { title, category, location } = req.query;
-
-    let filter = {};
-
-    if (title) {
-      filter.$or = [
-        { title: { $regex: title, $options: "i" } },
-        { description: { $regex: title, $options: "i" } },
-      ];
-    }
-
-    if (category) {
-      filter.category = category;
-    }
-
-    if (location) {
-      filter.location = { $regex: location, $options: "i" };
-    }
-
-    const listings = await Listing.find(filter).sort({ createdAt: -1 });
-    res.json(listings);
-  } catch (err) {
-    console.error("❌ Eroare la search:", err);
-    res.status(500).json({ error: "Eroare server la căutare" });
-  }
-});
-
-// ✅ Obține un anunț după ID
+/** GET /api/listings/:id  (detalii) */
 router.get("/:id", async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ error: "Anunțul nu a fost găsit" });
+    const { id } = req.params;
+    if (!isValidId(id)) return res.status(400).json({ message: "ID invalid" });
+
+    const listing = await Listing.findById(id);
+    if (!listing) return res.status(404).json({ message: "Anunțul nu a fost găsit" });
+
     res.json(listing);
   } catch (err) {
-    console.error("❌ Eroare la preluarea anunțului:", err);
-    res.status(500).json({ error: "Eroare server" });
+    res.status(500).json({ message: "Eroare la detalii", error: err.message });
   }
 });
 
-// ✅ Editează un anunț
-router.put("/:id", verifyToken, upload.array("images", 15), async (req, res) => {
+/** PUT /api/listings/:id  (actualizare totală/parțială) */
+router.put("/:id", async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ error: "Anunțul nu există" });
-    if (listing.user.toString() !== req.user.id)
-      return res.status(403).json({ error: "Nu ai voie să editezi acest anunț" });
+    const { id } = req.params;
+    if (!isValidId(id)) return res.status(400).json({ message: "ID invalid" });
 
-    let imageUrls = listing.images;
+    const updated = await Listing.findByIdAndUpdate(id, req.body, { new: true });
+    if (!updated) return res.status(404).json({ message: "Anunțul nu a fost găsit" });
 
-    if (req.files && req.files.length > 0) {
-      imageUrls = [];
-      for (const file of req.files) {
-        const uploadRes = await cloudinary.uploader.upload_stream({
-          resource_type: "image",
-        });
-        imageUrls.push(uploadRes.secure_url);
-      }
-    }
-
-    listing.title = req.body.title || listing.title;
-    listing.description = req.body.description || listing.description;
-    listing.price = req.body.price || listing.price;
-    listing.category = req.body.category || listing.category;
-    listing.location = req.body.location || listing.location;
-    listing.images = imageUrls;
-
-    await listing.save();
-    res.json(listing);
+    res.json(updated);
   } catch (err) {
-    console.error("❌ Eroare la editare:", err);
-    res.status(500).json({ error: "Eroare server la editare" });
+    res.status(500).json({ message: "Eroare la actualizare", error: err.message });
   }
 });
 
-// ✅ Marchează ca rezervat
-router.patch("/:id/rezervat", verifyToken, async (req, res) => {
+/** PATCH /api/listings/:id/status  (update doar status) */
+router.patch("/:id/status", async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ error: "Anunțul nu există" });
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!isValidId(id)) return res.status(400).json({ message: "ID invalid" });
+    if (!status) return res.status(400).json({ message: "Status lipsă" });
 
-    if (listing.user.toString() !== req.user.id)
-      return res.status(403).json({ error: "Nu ai voie să modifici acest anunț" });
+    const updated = await Listing.findByIdAndUpdate(id, { status }, { new: true });
+    if (!updated) return res.status(404).json({ message: "Anunțul nu a fost găsit" });
 
-    listing.rezervat = !listing.rezervat;
-    await listing.save();
-
-    res.json({ success: true, rezervat: listing.rezervat });
+    res.json(updated);
   } catch (err) {
-    console.error("❌ Eroare la rezervare:", err);
-    res.status(500).json({ error: "Eroare server la rezervare" });
+    res.status(500).json({ message: "Eroare la schimbarea statusului", error: err.message });
   }
 });
 
-// ✅ Șterge un anunț
-router.delete("/:id", verifyToken, async (req, res) => {
+/** DELETE /api/listings/:id  (ștergere) */
+router.delete("/:id", async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ error: "Anunțul nu există" });
+    const { id } = req.params;
+    if (!isValidId(id)) return res.status(400).json({ message: "ID invalid" });
 
-    if (listing.user.toString() !== req.user.id)
-      return res.status(403).json({ error: "Nu ai voie să ștergi acest anunț" });
+    const deleted = await Listing.findByIdAndDelete(id);
+    if (!deleted) return res.status(404).json({ message: "Anunțul nu a fost găsit" });
 
-    await listing.deleteOne();
     res.json({ message: "Anunț șters cu succes" });
   } catch (err) {
-    console.error("❌ Eroare la ștergere:", err);
-    res.status(500).json({ error: "Eroare server la ștergere" });
+    res.status(500).json({ message: "Eroare la ștergere", error: err.message });
   }
 });
 

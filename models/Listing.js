@@ -2,45 +2,19 @@ import mongoose from "mongoose";
 
 const ListingSchema = new mongoose.Schema(
   {
-    title: {
+    title: { type: String, required: true, trim: true },
+    description: { type: String, default: "" },
+    price: { type: Number, required: true, min: 0 },
+    imageUrl: { type: String, default: "" },     // o singură imagine (opțional)
+    images: { type: [String], default: [] },     // galerii (opțional)
+    status: {
       type: String,
-      required: true,
-      trim: true,
+      enum: ["disponibil", "rezervat", "vandut"],
+      default: "disponibil",
     },
-    description: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    price: {
-      type: Number,
-      required: true,
-    },
-    category: {
-      type: String,
-      required: true,
-    },
-    location: {
-      type: String,
-      required: true,
-    },
-    images: [
-      {
-        type: String, // link imagine Cloudinary
-      },
-    ],
-    userEmail: {
-      type: String, // email-ul utilizatorului care a adăugat anunțul
-      required: true,
-    },
-    rezervat: {
-      type: Boolean,
-      default: false,
-    },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // opțional
   },
   { timestamps: true }
 );
 
-const Listing = mongoose.model("Listing", ListingSchema);
-
-export default Listing;
+export default mongoose.model("Listing", ListingSchema);
