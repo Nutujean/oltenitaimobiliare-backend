@@ -46,7 +46,7 @@ router.post("/", async (req, res) => {
       category,
       location,
       images: images || [],
-      userEmail, // salvăm emailul userului care a creat anunțul
+      userEmail,
     });
 
     await listing.save();
@@ -57,7 +57,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-/** PUT /api/listings/:id - actualizare */
+/** PUT /api/listings/:id - actualizare completă */
 router.put("/:id", async (req, res) => {
   try {
     const updated = await Listing.findByIdAndUpdate(req.params.id, req.body, {
@@ -84,6 +84,22 @@ router.delete("/:id", async (req, res) => {
   } catch (err) {
     console.error("❌ Eroare la ștergere:", err.message);
     res.status(500).json({ error: "Eroare server la ștergere" });
+  }
+});
+
+/** PATCH /api/listings/:id/rezervat - toggle disponibil/rezervat */
+router.patch("/:id/rezervat", async (req, res) => {
+  try {
+    const listing = await Listing.findById(req.params.id);
+    if (!listing) return res.status(404).json({ error: "Anunțul nu a fost găsit!" });
+
+    listing.rezervat = !listing.rezervat; // schimbă între true/false
+    await listing.save();
+
+    res.json({ message: "✅ Status actualizat!", listing });
+  } catch (err) {
+    console.error("❌ Eroare la schimbarea statusului:", err.message);
+    res.status(500).json({ error: "Eroare server la schimbarea statusului" });
   }
 });
 
