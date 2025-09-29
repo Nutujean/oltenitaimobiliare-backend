@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const listingSchema = new mongoose.Schema(
+const ListingSchema = new mongoose.Schema(
   {
     title: {
       type: String,
@@ -24,12 +24,23 @@ const listingSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    images: {
-      type: [String], // linkuri imagini Cloudinary
-      default: [],
+    images: [
+      {
+        type: String, // link imagine Cloudinary
+      },
+    ],
+    userEmail: {
+      type: String, // email-ul utilizatorului care a adăugat anunțul
+      required: true,
+    },
+    rezervat: {
+      type: Boolean,
+      default: false,
     },
   },
-  { timestamps: true } // adaugă automat createdAt și updatedAt
+  { timestamps: true }
 );
 
-export default mongoose.model("Listing", listingSchema);
+const Listing = mongoose.model("Listing", ListingSchema);
+
+export default Listing;
