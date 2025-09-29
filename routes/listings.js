@@ -3,10 +3,7 @@ import Listing from "../models/Listing.js";
 
 const router = express.Router();
 
-/**
- * GET /api/listings
- * Returnează toate anunțurile
- */
+/** GET /api/listings - toate anunțurile */
 router.get("/", async (req, res) => {
   try {
     const listings = await Listing.find().sort({ createdAt: -1 });
@@ -17,10 +14,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-/**
- * GET /api/listings/:id
- * Returnează un anunț după ID
- */
+/** GET /api/listings/:id - un singur anunț */
 router.get("/:id", async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
@@ -34,19 +28,15 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-/**
- * POST /api/listings
- * Creează un anunț nou
- */
+/** POST /api/listings - creează un anunț nou */
 router.post("/", async (req, res) => {
   try {
-    let { title, description, price, category, location, images } = req.body;
+    let { title, description, price, category, location, images, userEmail } = req.body;
 
-    if (!title || !description || !price || !category || !location) {
+    if (!title || !description || !price || !category || !location || !userEmail) {
       return res.status(400).json({ error: "Toate câmpurile sunt obligatorii!" });
     }
 
-    // Convertim prețul la număr
     price = Number(price);
 
     const listing = new Listing({
@@ -56,6 +46,7 @@ router.post("/", async (req, res) => {
       category,
       location,
       images: images || [],
+      userEmail, // salvăm emailul userului care a creat anunțul
     });
 
     await listing.save();
@@ -66,10 +57,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-/**
- * PUT /api/listings/:id
- * Actualizează un anunț
- */
+/** PUT /api/listings/:id - actualizare */
 router.put("/:id", async (req, res) => {
   try {
     const updated = await Listing.findByIdAndUpdate(req.params.id, req.body, {
@@ -85,10 +73,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-/**
- * DELETE /api/listings/:id
- * Șterge un anunț
- */
+/** DELETE /api/listings/:id - ștergere */
 router.delete("/:id", async (req, res) => {
   try {
     const deleted = await Listing.findByIdAndDelete(req.params.id);
