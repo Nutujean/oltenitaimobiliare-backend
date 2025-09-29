@@ -16,6 +16,8 @@ router.get("/", async (req, res) => {
 // ✅ Adaugă un anunț nou (inclusiv userEmail)
 router.post("/", async (req, res) => {
   try {
+    console.log("📥 Date primite de la frontend:", req.body); // 👈 DEBUG
+
     const { title, description, price, category, location, images, userEmail } = req.body;
 
     const newListing = new Listing({
@@ -25,7 +27,7 @@ router.post("/", async (req, res) => {
       category,
       location,
       images,
-      userEmail, // 👈 forțăm salvarea userEmail
+      userEmail, // 👈 forțăm salvarea
     });
 
     await newListing.save();
@@ -52,11 +54,9 @@ router.delete("/:id", async (req, res) => {
 // ✅ Editează un anunț după ID
 router.put("/:id", async (req, res) => {
   try {
-    const updated = await Listing.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
+    const updated = await Listing.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
     if (!updated) {
       return res.status(404).json({ error: "Anunțul nu a fost găsit" });
     }
