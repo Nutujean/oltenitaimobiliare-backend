@@ -4,7 +4,7 @@ import Listing from "../models/Listing.js";
 const router = express.Router();
 
 /**
- * 📌 GET /api/listings
+ * GET /api/listings
  * Returnează toate anunțurile
  */
 router.get("/", async (req, res) => {
@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
 });
 
 /**
- * 📌 GET /api/listings/:id
+ * GET /api/listings/:id
  * Returnează un anunț după ID
  */
 router.get("/:id", async (req, res) => {
@@ -35,16 +35,19 @@ router.get("/:id", async (req, res) => {
 });
 
 /**
- * 📌 POST /api/listings
+ * POST /api/listings
  * Creează un anunț nou
  */
 router.post("/", async (req, res) => {
   try {
-    const { title, description, price, category, location, images } = req.body;
+    let { title, description, price, category, location, images } = req.body;
 
     if (!title || !description || !price || !category || !location) {
       return res.status(400).json({ error: "Toate câmpurile sunt obligatorii!" });
     }
+
+    // Convertim prețul la număr
+    price = Number(price);
 
     const listing = new Listing({
       title,
@@ -64,7 +67,7 @@ router.post("/", async (req, res) => {
 });
 
 /**
- * 📌 PUT /api/listings/:id
+ * PUT /api/listings/:id
  * Actualizează un anunț
  */
 router.put("/:id", async (req, res) => {
@@ -83,7 +86,7 @@ router.put("/:id", async (req, res) => {
 });
 
 /**
- * 📌 DELETE /api/listings/:id
+ * DELETE /api/listings/:id
  * Șterge un anunț
  */
 router.delete("/:id", async (req, res) => {

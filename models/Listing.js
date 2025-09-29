@@ -4,41 +4,32 @@ const listingSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, "Titlul este obligatoriu"],
+      required: true,
       trim: true,
     },
     description: {
       type: String,
-      required: [true, "Descrierea este obligatorie"],
+      required: true,
+      trim: true,
     },
     price: {
       type: Number,
-      required: [true, "Prețul este obligatoriu"],
-      min: [0, "Prețul nu poate fi negativ"],
+      required: true,
     },
     category: {
       type: String,
-      required: [true, "Categoria este obligatorie"],
-      enum: ["Apartament", "Casă", "Teren", "Garsonieră", "Garaj", "Spațiu comercial", "Altceva"],
+      required: true,
     },
     location: {
       type: String,
-      required: [true, "Locația este obligatorie"],
+      required: true,
     },
-    images: [
-      {
-        type: String, // stocăm link-ul de la Cloudinary
-      },
-    ],
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User", // legătura cu utilizatorul care a adăugat anunțul
-      required: false,
+    images: {
+      type: [String], // linkuri imagini Cloudinary
+      default: [],
     },
   },
-  { timestamps: true }
+  { timestamps: true } // adaugă automat createdAt și updatedAt
 );
 
-const Listing = mongoose.model("Listing", listingSchema);
-
-export default Listing;
+export default mongoose.model("Listing", listingSchema);
