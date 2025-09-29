@@ -6,7 +6,7 @@ import { v2 as cloudinary } from "cloudinary";
 
 // Rute
 import listingsRoutes from "./routes/listings.js";
-import authRoutes from "./routes/auth.js";
+import authRoutes from "./routes/authRoutes.js";
 
 dotenv.config();
 const app = express();
