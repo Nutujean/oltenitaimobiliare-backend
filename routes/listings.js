@@ -60,7 +60,7 @@ router.get("/my-listings", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ Căutare în baza de date — IMPORTANT: asta vine înainte de /:id
+// ✅ Căutare (TREBUIE să fie înainte de /:id)
 router.get("/search", async (req, res) => {
   try {
     const { title, category, location } = req.query;
