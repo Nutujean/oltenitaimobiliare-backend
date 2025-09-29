@@ -1,63 +1,85 @@
 import express from "express";
-import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import User from "../models/User.js";
+import authMiddleware from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// Generate JWT
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
-};
-
-// REGISTER
+// 🔹 Înregistrare
 router.post("/register", async (req, res) => {
-  const { name, email, password } = req.body;
-
   try {
+    const { name, email, password } = req.body;
+
     const userExists = await User.findOne({ email });
     if (userExists) {
-      return res.status(400).json({ message: "Emailul este deja folosit" });
+      return res.status(400).json({ error: "Email deja folosit" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newUser = await User.create({
+    const user = new User({
       name,
       email,
       password: hashedPassword,
     });
 
-    const token = generateToken(newUser._id);
+    await user.save();
 
-    res.status(201).json({
-      token,
-      name: newUser.name, // 👈 trimitem numele
-    });
-  } catch (err) {
-    res.status(500).json({ message: "Eroare la înregistrare" });
+    res.json({ message: "Cont creat cu succes" });
+  } catch (error) {
+    res.status(500).json({ error: "Eroare la înregistrare" });
   }
 });
 
-// LOGIN
+// 🔹 Login
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-
   try {
+    const { email, password } = req.body;
+
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "Email sau parolă invalidă" });
+    if (!user) return res.status(400).json({ error: "User inexistent" });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Email sau parolă invalidă" });
+    if (!isMatch) return res.status(400).json({ error: "Parolă incorectă" });
 
-    const token = generateToken(user._id);
-
-    res.json({
-      token,
-      name: user.name, // 👈 trimitem numele
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
     });
-  } catch (err) {
-    res.status(500).json({ message: "Eroare la login" });
+
+    res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+  } catch (error) {
+    res.status(500).json({ error: "Eroare la autentificare" });
+  }
+});
+
+// 🔹 Obține userul logat
+router.get("/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("-password");
+    if (!user) return res.status(404).json({ error: "User inexistent" });
+
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: "Eroare server" });
+  }
+});
+
+// 🔹 Schimbă parola
+router.put("/change-password", authMiddleware, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: "Parola este obligatorie" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await User.findByIdAndUpdate(req.user._id, { password: hashedPassword });
+
+    res.json({ message: "Parola schimbată cu succes" });
+  } catch (error) {
+    res.status(500).json({ error: "Eroare server" });
   }
 });
 
