@@ -1,106 +1,74 @@
 import express from "express";
-import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
+import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-/** Helper */
-const isValidId = (id) => mongoose.isValidObjectId(id);
-
-/** GET /api/listings  (listare) */
+// GET toate anunțurile
 router.get("/", async (req, res) => {
   try {
-    const { status, limit = 50 } = req.query;
-    const filter = {};
-    if (status) filter.status = status;
-
-    const items = await Listing.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(Number(limit));
-    res.json(items);
+    const listings = await Listing.find().sort({ createdAt: -1 });
+    res.json(listings);
   } catch (err) {
-    res.status(500).json({ message: "Eroare la listare", error: err.message });
+    res.status(500).json({ message: "Eroare la încărcarea anunțurilor" });
   }
 });
 
-/** POST /api/listings  (creare) */
-router.post("/", async (req, res) => {
-  try {
-    const payload = req.body ?? {};
-    const listing = await Listing.create({
-      title: payload.title,
-      description: payload.description,
-      price: payload.price,
-      imageUrl: payload.imageUrl,
-      images: Array.isArray(payload.images) ? payload.images : [],
-      status: payload.status || "disponibil",
-      user: payload.user || undefined,
-    });
-    res.status(201).json(listing);
-  } catch (err) {
-    res.status(400).json({ message: "Eroare la creare", error: err.message });
-  }
-});
-
-/** GET /api/listings/:id  (detalii) */
+// GET un anunț după id
 router.get("/:id", async (req, res) => {
   try {
-    const { id } = req.params;
-    if (!isValidId(id)) return res.status(400).json({ message: "ID invalid" });
-
-    const listing = await Listing.findById(id);
+    const listing = await Listing.findById(req.params.id);
     if (!listing) return res.status(404).json({ message: "Anunțul nu a fost găsit" });
-
     res.json(listing);
   } catch (err) {
-    res.status(500).json({ message: "Eroare la detalii", error: err.message });
+    res.status(500).json({ message: "Eroare la încărcarea anunțului" });
   }
 });
 
-/** PUT /api/listings/:id  (actualizare totală/parțială) */
-router.put("/:id", async (req, res) => {
+// POST - adaugă anunț (doar logat)
+router.post("/", protect, async (req, res) => {
   try {
-    const { id } = req.params;
-    if (!isValidId(id)) return res.status(400).json({ message: "ID invalid" });
+    const newListing = new Listing({ ...req.body, user: req.user.id });
+    const saved = await newListing.save();
+    res.status(201).json(saved);
+  } catch (err) {
+    res.status(500).json({ message: "Eroare la adăugare anunț" });
+  }
+});
 
-    const updated = await Listing.findByIdAndUpdate(id, req.body, { new: true });
-    if (!updated) return res.status(404).json({ message: "Anunțul nu a fost găsit" });
+// PUT - doar proprietarul poate edita
+router.put("/:id", protect, async (req, res) => {
+  try {
+    const listing = await Listing.findById(req.params.id);
+    if (!listing) return res.status(404).json({ message: "Anunțul nu există" });
 
+    if (listing.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Nu ai voie să editezi acest anunț" });
+    }
+
+    const updated = await Listing.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ message: "Eroare la actualizare", error: err.message });
+    res.status(500).json({ message: "Eroare la actualizare anunț" });
   }
 });
 
-/** PATCH /api/listings/:id/status  (update doar status) */
-router.patch("/:id/status", async (req, res) => {
+// DELETE - doar proprietarul poate șterge
+router.delete("/:id", protect, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { status } = req.body;
-    if (!isValidId(id)) return res.status(400).json({ message: "ID invalid" });
-    if (!status) return res.status(400).json({ message: "Status lipsă" });
+    const listing = await Listing.findById(req.params.id);
+    if (!listing) return res.status(404).json({ message: "Anunțul nu există" });
 
-    const updated = await Listing.findByIdAndUpdate(id, { status }, { new: true });
-    if (!updated) return res.status(404).json({ message: "Anunțul nu a fost găsit" });
+    if (listing.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Nu ai voie să ștergi acest anunț" });
+    }
 
-    res.json(updated);
-  } catch (err) {
-    res.status(500).json({ message: "Eroare la schimbarea statusului", error: err.message });
-  }
-});
-
-/** DELETE /api/listings/:id  (ștergere) */
-router.delete("/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!isValidId(id)) return res.status(400).json({ message: "ID invalid" });
-
-    const deleted = await Listing.findByIdAndDelete(id);
-    if (!deleted) return res.status(404).json({ message: "Anunțul nu a fost găsit" });
-
+    await listing.deleteOne();
     res.json({ message: "Anunț șters cu succes" });
   } catch (err) {
-    res.status(500).json({ message: "Eroare la ștergere", error: err.message });
+    res.status(500).json({ message: "Eroare la ștergere anunț" });
   }
 });
 

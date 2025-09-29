@@ -1,18 +1,14 @@
 import jwt from "jsonwebtoken";
 
-export const verifyToken = (req, res, next) => {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // format: "Bearer TOKEN"
-
-  if (!token) {
-    return res.status(401).json({ error: "Acces refuzat: lipsă token" });
-  }
+export const protect = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1]; // "Bearer <token>"
+  if (!token) return res.status(401).json({ message: "Neautorizat" });
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // salvez id-ul userului în req.user
+    req.user = decoded; // { id: "...", email: "..."}
     next();
   } catch (err) {
-    res.status(403).json({ error: "Token invalid sau expirat" });
+    res.status(401).json({ message: "Token invalid" });
   }
 };
