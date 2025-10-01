@@ -14,37 +14,16 @@ dotenv.config();
 const app = express();
 
 /* --------------------------- CORS (dev-friendly) --------------------------- */
-/* Notă: ținem CORS deschis acum ca să evităm erorile „Failed to fetch”.
-   Când vrei să restrângi strict la domeniul tău, vezi blocul comentat de mai jos. */
+// NOTĂ: e deschis ca să evităm „Failed to fetch”. Când vrei, îl restrângem.
 app.use(
   cors({
-    origin: true, // ✅ acceptă orice origin (prod + localhost + postman)
+    origin: true, // acceptă orice origin (prod + localhost + postman)
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: false, // setează true DOAR dacă folosești sesiuni/cookie-uri
+    credentials: false, // pune true doar dacă folosești cookie-uri/sesiuni
   })
 );
-app.options("*", cors()); // preflight pentru toate rutele
-
-/* ▼ Varianta STRICTĂ (activeaz-o când ești gata să limitezi la domeniul tău)
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://oltenitaimobiliare.ro";
-const LOCAL_URL = process.env.LOCAL_URL || "http://localhost:5173";
-const allowedOrigins = [FRONTEND_URL, LOCAL_URL, "http://127.0.0.1:5173"];
-
-app.use(
-  cors({
-    origin(origin, cb) {
-      if (!origin) return cb(null, true);
-      if (allowedOrigins.includes(origin)) return cb(null, true);
-      return cb(new Error(`CORS blocat pentru origin: ${origin}`));
-    },
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: false,
-  })
-);
-app.options("*", cors());
-*/
+app.options("*", cors()); // preflight
 
 /* ----------------------------- Body parsers ----------------------------- */
 app.use(express.json({ limit: "10mb" }));
@@ -54,15 +33,22 @@ app.use(express.urlencoded({ extended: true }));
 app.set("trust proxy", 1);
 
 /* --------------------------- Conexiune MongoDB -------------------------- */
-const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/oltenitaimobiliare";
+// IMPORTANT: fără fallback la localhost în producție
+const MONGODB_URI = process.env.MONGODB_URI;
 
+if (!MONGODB_URI) {
+  console.error("❌ MONGODB_URI nu este setat în variabilele de mediu.");
+  console.error("   Configurează-l în Render → Settings → Environment.");
+  process.exit(1);
+}
+
+console.log("ℹ️  Încerc conexiunea la MongoDB...");
 mongoose
   .connect(MONGODB_URI)
   .then(() => console.log("✅ MongoDB conectat"))
   .catch((err) => {
-    console.error("❌ Eroare MongoDB:", err);
-    process.exit(1);
+    console.error("❌ Eroare MongoDB:", err.message);
+    process.exit(1); // opțional: poți porni serverul oricum dacă vrei doar health
   });
 
 /* ------------------------------ Healthcheck ----------------------------- */
