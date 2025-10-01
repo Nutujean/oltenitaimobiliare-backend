@@ -5,15 +5,16 @@ const router = express.Router();
 
 /**
  * GET /api/listings
- * Filtre suportate (toate opționale):
+ * Filtre (toate opționale):
  * - category: potrivire exactă, case-insensitive (ex. "Apartamente")
  * - q: căutare text în title/description (case-insensitive)
  * - location: căutare text în location (case-insensitive)
  * - price: preț maxim (<=)
+ * Sortare (opțional): sort = latest | price_asc | price_desc
  */
 router.get("/", async (req, res) => {
   try {
-    const { category, q, location, price } = req.query;
+    const { category, q, location, price, sort } = req.query;
     const query = {};
 
     if (category) {
@@ -36,7 +37,13 @@ router.get("/", async (req, res) => {
       }
     }
 
-    const listings = await Listing.find(query).sort({ createdAt: -1 });
+    // 🔽 sortare
+    let sortObj = { createdAt: -1 }; // implicit cele mai noi
+    if (sort === "price_asc") sortObj = { price: 1, createdAt: -1 };
+    if (sort === "price_desc") sortObj = { price: -1, createdAt: -1 };
+    if (sort === "latest") sortObj = { createdAt: -1 };
+
+    const listings = await Listing.find(query).sort(sortObj);
     res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /listings:", err);
