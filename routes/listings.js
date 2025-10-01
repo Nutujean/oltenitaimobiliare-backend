@@ -12,7 +12,7 @@ router.get("/", async (req, res) => {
     const query = {};
 
     if (category) {
-      // filtru case-insensitive, potrivire exactă pe nume (ex. "Apartamente")
+      // potrivire exactă, case-insensitive (ex: "Apartamente", "Case", "Spațiu comercial")
       query.category = { $regex: new RegExp("^" + category + "$", "i") };
     }
 
