@@ -1,5 +1,6 @@
 import express from "express";
 import Listing from "../models/Listing.js";
+import User from "../models/User.js";
 
 const router = express.Router();
 
@@ -9,23 +10,33 @@ const router = express.Router();
  *  - category: potrivire exactă, case-insensitive (ex. "Apartamente")
  *  - q: căutare text în title/description (case-insensitive)
  *  - location: potrivire exactă, case-insensitive (ex. "Oltenita")
+ *  - price: preț maxim (<=)
  *  - sort: latest | oldest | price_asc | price_desc
+ * Include contactPhone: listing.phone || owner.phone
  */
-// ✅ LISTĂ anunțuri — include contactPhone (listing.phone || owner.phone)
 router.get("/", async (req, res) => {
   try {
-    const { category, q, location, sort, price } = req.query;
+    const { category, q, location, price, sort } = req.query;
     const query = {};
 
-    if (category) query.category = { $regex: new RegExp("^" + category + "$", "i") };
+    if (category) {
+      query.category = { $regex: new RegExp("^" + category + "$", "i") };
+    }
+
     if (q) {
       const rx = new RegExp(q, "i");
       query.$or = [{ title: rx }, { description: rx }];
     }
-    if (location) query.location = { $regex: new RegExp("^" + location + "$", "i") };
+
+    if (location) {
+      query.location = { $regex: new RegExp("^" + location + "$", "i") };
+    }
+
     if (price) {
       const max = Number(price);
-      if (!Number.isNaN(max)) query.price = { ...(query.price || {}), $lte: max };
+      if (!Number.isNaN(max)) {
+        query.price = { ...(query.price || {}), $lte: max };
+      }
     }
 
     let sortObj = { createdAt: -1 };
@@ -33,7 +44,6 @@ router.get("/", async (req, res) => {
     if (sort === "price_asc") sortObj = { price: 1, createdAt: -1 };
     if (sort === "price_desc") sortObj = { price: -1, createdAt: -1 };
 
-    // populate pentru a putea folosi owner.phone ca fallback
     const docs = await Listing.find(query)
       .populate({ path: "owner", select: "name phone" })
       .sort(sortObj);
@@ -51,7 +61,10 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ✅ DETALIU anunț — include contactPhone (listing.phone || owner.phone)
+/**
+ * GET /api/listings/:id
+ * Include contactPhone: listing.phone || owner.phone
+ */
 router.get("/:id", async (req, res) => {
   try {
     const doc = await Listing.findById(req.params.id)
@@ -69,10 +82,22 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-/** POST /api/listings */
+/**
+ * POST /api/listings
+ * Dacă lipsește phone în body, îl completăm automat din profilul owner-ului.
+ */
 router.post("/", async (req, res) => {
   try {
-    const newListing = new Listing(req.body);
+    const body = { ...req.body };
+
+    if (!body.phone && body.owner) {
+      const ownerUser = await User.findById(body.owner).select("phone");
+      if (ownerUser?.phone) {
+        body.phone = ownerUser.phone;
+      }
+    }
+
+    const newListing = new Listing(body);
     await newListing.save();
     res.status(201).json(newListing);
   } catch (err) {
@@ -81,7 +106,9 @@ router.post("/", async (req, res) => {
   }
 });
 
-/** PUT /api/listings/:id */
+/**
+ * PUT /api/listings/:id
+ */
 router.put("/:id", async (req, res) => {
   try {
     const updatedListing = await Listing.findByIdAndUpdate(
@@ -99,7 +126,9 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-/** DELETE /api/listings/:id */
+/**
+ * DELETE /api/listings/:id
+ */
 router.delete("/:id", async (req, res) => {
   try {
     const deletedListing = await Listing.findByIdAndDelete(req.params.id);

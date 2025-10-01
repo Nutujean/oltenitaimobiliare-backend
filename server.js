@@ -1,54 +1,74 @@
+// server.js
 import express from "express";
-import mongoose from "mongoose";
-import dotenv from "dotenv";
 import cors from "cors";
-import authRoutes from "./routes/auth.js";
-import listingRoutes from "./routes/listings.js";
+import dotenv from "dotenv";
+import mongoose from "mongoose";
+
+// rutele tale
+import authRoutes from "./routes/authRoutes.js";
+import listingsRoutes from "./routes/listings.js";
+import usersRoutes from "./routes/users.js"; // nou
 
 dotenv.config();
 
 const app = express();
 
-// ✅ Middleware pentru JSON
-app.use(express.json());
+// ---- CORS (prod + localhost) ----
+const FRONTEND_URL = process.env.FRONTEND_URL || "https://oltenitaimobiliare.ro";
+const LOCAL_URL = process.env.LOCAL_URL || "http://localhost:5173";
 
-// ✅ Configurare CORS - doar o singură dată!
-const allowedOrigins = [
-  "http://localhost:5173",          // pentru frontend local (vite dev)
-  "https://oltenitaimobiliare.ro",  // pentru frontend live (Netlify)
-];
+const whitelist = [FRONTEND_URL, LOCAL_URL].filter(Boolean);
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.log("❌ CORS blocat pentru:", origin);
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin(origin, callback) {
+    // permite și tool-uri fără origin (ex. Postman)
+    if (!origin) return callback(null, true);
+    if (whitelist.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocat pentru origin: ${origin}`));
+  },
+  credentials: false, // setează true doar dacă trimiți cookie-uri/sesiuni
+}));
+app.options("*", cors()); // preflight
 
-console.log("✅ Middleware CORS activ, origini permise:", allowedOrigins);
+// ---- Body parsers ----
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-// ✅ Conectare la MongoDB Atlas
+// ---- Trust reverse proxy (Render/Heroku/etc) ----
+app.set("trust proxy", 1);
+
+// ---- DB connect ----
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/oltenitaimobiliare";
+
 mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("✅ Conectat la MongoDB Atlas"))
-  .catch((err) => console.error("❌ Eroare MongoDB:", err));
+  .connect(MONGODB_URI)
+  .then(() => console.log("✅ MongoDB conectat"))
+  .catch((err) => {
+    console.error("❌ Eroare MongoDB:", err);
+    process.exit(1);
+  });
 
-// ✅ Rute principale
-app.use("/api/auth", authRoutes);
-app.use("/api/listings", listingRoutes);
+// ---- Healthcheck ----
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, time: new Date().toISOString() });
+});
 
-// ✅ Pornire server
+// ---- Rute API ----
+app.use("/api/auth", authRoutes);       // login/register/etc (existent la tine)
+app.use("/api/listings", listingsRoutes); // anunțuri (filtre/sort/etc)
+app.use("/api/users", usersRoutes);       // /api/users/me (nou)
+
+// ---- 404 API fallback ----
+app.use((req, res) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({ error: "Ruta API inexistentă" });
+  }
+  res.status(404).send("Not found");
+});
+
+// ---- Start server ----
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server pornit pe portul ${PORT}`);
+  console.log(`   Frontend permis (CORS): ${whitelist.join(", ")}`);
 });
