@@ -12,7 +12,7 @@ const app = express();
 // ✅ Middleware pentru JSON
 app.use(express.json());
 
-// ✅ Configurare CORS (localhost + domeniul live)
+// ✅ Configurare CORS - doar o singură dată!
 const allowedOrigins = [
   "http://localhost:5173",          // pentru frontend local (vite dev)
   "https://oltenitaimobiliare.ro",  // pentru frontend live (Netlify)
@@ -32,7 +32,9 @@ app.use(
   })
 );
 
-// ✅ Conectare MongoDB
+console.log("✅ Middleware CORS activ, origini permise:", allowedOrigins);
+
+// ✅ Conectare la MongoDB Atlas
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
@@ -41,7 +43,7 @@ mongoose
   .then(() => console.log("✅ Conectat la MongoDB Atlas"))
   .catch((err) => console.error("❌ Eroare MongoDB:", err));
 
-// ✅ Rute
+// ✅ Rute principale
 app.use("/api/auth", authRoutes);
 app.use("/api/listings", listingRoutes);
 
