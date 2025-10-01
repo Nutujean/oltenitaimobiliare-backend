@@ -5,16 +5,35 @@ const router = express.Router();
 
 /**
  * GET /api/listings
- * Suportă filtru opțional după categorie cu ?category=<Nume>
- * (potrivire exactă, case-insensitive)
+ * Filtre suportate (toate opționale):
+ * - category: potrivire exactă, case-insensitive (ex. "Apartamente")
+ * - q: căutare text în title/description (case-insensitive)
+ * - location: căutare text în location (case-insensitive)
+ * - price: preț maxim (<=)
  */
 router.get("/", async (req, res) => {
   try {
-    const { category } = req.query;
+    const { category, q, location, price } = req.query;
     const query = {};
 
     if (category) {
       query.category = { $regex: new RegExp("^" + category + "$", "i") };
+    }
+
+    if (q) {
+      const rx = new RegExp(q, "i");
+      query.$or = [{ title: rx }, { description: rx }];
+    }
+
+    if (location) {
+      query.location = { $regex: new RegExp(location, "i") };
+    }
+
+    if (price) {
+      const max = Number(price);
+      if (!Number.isNaN(max)) {
+        query.price = { ...(query.price || {}), $lte: max };
+      }
     }
 
     const listings = await Listing.find(query).sort({ createdAt: -1 });
@@ -25,10 +44,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-/**
- * GET /api/listings/:id
- * Un anunț după ID
- */
+/** GET /api/listings/:id */
 router.get("/:id", async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
@@ -40,10 +56,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-/**
- * POST /api/listings
- * Creează un anunț nou
- */
+/** POST /api/listings */
 router.post("/", async (req, res) => {
   try {
     const newListing = new Listing(req.body);
@@ -55,10 +68,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-/**
- * PUT /api/listings/:id
- * Actualizează un anunț
- */
+/** PUT /api/listings/:id */
 router.put("/:id", async (req, res) => {
   try {
     const updatedListing = await Listing.findByIdAndUpdate(
@@ -76,10 +86,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-/**
- * DELETE /api/listings/:id
- * Șterge un anunț
- */
+/** DELETE /api/listings/:id */
 router.delete("/:id", async (req, res) => {
   try {
     const deletedListing = await Listing.findByIdAndDelete(req.params.id);
