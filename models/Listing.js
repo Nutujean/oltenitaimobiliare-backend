@@ -1,20 +1,24 @@
 import mongoose from "mongoose";
 
-const ListingSchema = new mongoose.Schema(
+const listingSchema = new mongoose.Schema(
   {
-    title: { type: String, required: true, trim: true },
+    title: { type: String, required: true },
     description: { type: String, default: "" },
+    category: { type: String, required: true },
+    location: { type: String, required: true },
     price: { type: Number, required: true, min: 0 },
-    imageUrl: { type: String, default: "" },     // o singură imagine (opțional)
-    images: { type: [String], default: [] },     // galerii (opțional)
+    type: { type: String, enum: ["vanzare", "inchiriere"], default: "vanzare" },
+    phone: { type: String, required: true }, // 🔹 număr de telefon obligatoriu
+    imageUrl: { type: String, default: "" }, // o singură imagine
+    images: { type: [String], default: [] }, // galerie imagini
     status: {
       type: String,
       enum: ["disponibil", "rezervat", "vandut"],
       default: "disponibil",
     },
-    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // opțional
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true }
 );
 
-export default mongoose.model("Listing", ListingSchema);
+export default mongoose.model("Listing", listingSchema);

@@ -1,6 +1,6 @@
 import express from "express";
 import Listing from "../models/Listing.js";
-import { protect } from "../middleware/authMiddleware.js";
+import authMiddleware from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -26,7 +26,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // POST - adaugă anunț (doar logat)
-router.post("/", protect, async (req, res) => {
+router.post("/", authMiddleware, async (req, res) => {
   try {
     const newListing = new Listing({ ...req.body, user: req.user.id });
     const saved = await newListing.save();
@@ -37,7 +37,7 @@ router.post("/", protect, async (req, res) => {
 });
 
 // PUT - doar proprietarul poate edita
-router.put("/:id", protect, async (req, res) => {
+router.put("/:id", authMiddleware, async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
     if (!listing) return res.status(404).json({ message: "Anunțul nu există" });
@@ -56,7 +56,7 @@ router.put("/:id", protect, async (req, res) => {
 });
 
 // DELETE - doar proprietarul poate șterge
-router.delete("/:id", protect, async (req, res) => {
+router.delete("/:id", authMiddleware, async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
     if (!listing) return res.status(404).json({ message: "Anunțul nu există" });
