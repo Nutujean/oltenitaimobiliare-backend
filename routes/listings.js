@@ -5,9 +5,7 @@ import Listing from "../models/Listing.js";
 
 const router = express.Router();
 
-/**
- * Build query din ?category, ?q, ?location, ?price
- */
+/* ---------------- helpers ---------------- */
 function buildMatchQuery(qs) {
   const { category, q, location, price } = qs;
   const query = {};
@@ -24,9 +22,6 @@ function buildMatchQuery(qs) {
   return query;
 }
 
-/**
- * Build sort din ?sort
- */
 function buildSort(sort) {
   let sortObj = { createdAt: -1 };
   if (sort === "oldest") sortObj = { createdAt: 1 };
@@ -35,25 +30,21 @@ function buildSort(sort) {
   return sortObj;
 }
 
-/**
- * Pipeline comun: JOIN după userEmail -> users.email pentru a obține telefonul
- * Notă: colecția de utilizatori în Mongo e "users" (plural, lowercase).
- */
+/** Lookup by email (listings.userEmail → users.email) ca să obținem telefonul din profil */
 function buildPipeline(match, sortObj) {
   return [
     { $match: match },
     { $sort: sortObj },
     {
       $lookup: {
-        from: "users",
-        localField: "userEmail",
-        foreignField: "email",
+        from: "users",            // colecția de utilizatori
+        localField: "userEmail",  // câmp în listings
+        foreignField: "email",    // câmp în users
         as: "ownerUser",
       },
     },
     {
       $addFields: {
-        // dacă ai un camp phone pe listing, el are prioritate; altfel ia din profil
         contactPhone: {
           $let: {
             vars: { owner: { $arrayElemAt: ["$ownerUser", 0] } },
@@ -66,28 +57,24 @@ function buildPipeline(match, sortObj) {
   ];
 }
 
-/**
- * GET /api/listings — listă cu filtre + contactPhone din profil (by email)
- */
+/* ---------------- routes ---------------- */
+
+/** GET /api/listings — listă cu filtre + contactPhone */
 router.get("/", async (req, res) => {
   try {
     const match = buildMatchQuery(req.query);
     const sortObj = buildSort(req.query.sort);
     const pipeline = buildPipeline(match, sortObj);
-
     const docs = await Listing.aggregate(pipeline);
-    return res.json(docs);
+    res.json(docs);
   } catch (err) {
     console.error("❌ Eroare GET /listings:", err);
-    return res.status(500).json({ error: "Eroare la preluarea anunțurilor" });
+    res.status(500).json({ error: "Eroare la preluarea anunțurilor" });
   }
 });
 
-/**
- * GET /api/listings/__debug — rapid check colecție
- * (ține ruta asta ÎNAINTE de /:id)
- */
-router.get("/__debug", async (req, res) => {
+/** DEBUG: /api/listings/__debug — înainte de /:id, dar oricum nu mai contează cu regex */
+router.get("/__debug", async (_req, res) => {
   try {
     const count = await Listing.countDocuments();
     const sample = await Listing.findOne().lean();
@@ -101,28 +88,28 @@ router.get("/__debug", async (req, res) => {
   }
 });
 
-/**
- * GET /api/listings/:id — un anunț + contactPhone din profil (by email)
- */
-router.get("/:id", async (req, res) => {
+/** (opțional) /api/listings/__ids — ca să poți copia rapid un _id valid */
+router.get("/__ids", async (_req, res) => {
+  try {
+    const ids = await Listing.find({}, { _id: 1 }).sort({ createdAt: -1 }).limit(10).lean();
+    res.json(ids.map((d) => d._id));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/listings/:id — acceptează DOAR ObjectId valid (24 hex) */
+router.get("/:id([0-9a-fA-F]{24})", async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "ID invalid" });
-    }
-
     const match = { _id: new mongoose.Types.ObjectId(id) };
     const pipeline = buildPipeline(match, { createdAt: -1 });
-
     const out = await Listing.aggregate(pipeline).limit(1);
-    if (!out || out.length === 0) {
-      return res.status(404).json({ error: "Anunțul nu există" });
-    }
-
-    return res.json(out[0]);
+    if (!out || out.length === 0) return res.status(404).json({ error: "Anunțul nu există" });
+    res.json(out[0]);
   } catch (err) {
     console.error("❌ Eroare GET /listings/:id:", err);
-    return res.status(500).json({ error: "Eroare la preluarea anunțului" });
+    res.status(500).json({ error: "Eroare la preluarea anunțului" });
   }
 });
 
