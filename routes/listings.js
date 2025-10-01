@@ -1,74 +1,79 @@
 import express from "express";
 import Listing from "../models/Listing.js";
-import authMiddleware from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// GET toate anunțurile
+
+// ✅ GET toate anunțurile
 router.get("/", async (req, res) => {
   try {
     const listings = await Listing.find().sort({ createdAt: -1 });
     res.json(listings);
   } catch (err) {
-    res.status(500).json({ message: "Eroare la încărcarea anunțurilor" });
+    console.error("❌ Eroare GET /listings:", err);
+    res.status(500).json({ error: "Eroare la preluarea anunțurilor" });
   }
 });
 
-// GET un anunț după id
+
+// ✅ GET un singur anunț după ID
 router.get("/:id", async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ message: "Anunțul nu a fost găsit" });
+    if (!listing) {
+      return res.status(404).json({ error: "Anunțul nu există" });
+    }
     res.json(listing);
   } catch (err) {
-    res.status(500).json({ message: "Eroare la încărcarea anunțului" });
+    console.error("❌ Eroare GET /listings/:id:", err);
+    res.status(500).json({ error: "Eroare la preluarea anunțului" });
   }
 });
 
-// POST - adaugă anunț (doar logat)
-router.post("/", authMiddleware, async (req, res) => {
+
+// ✅ POST adăugare anunț nou
+router.post("/", async (req, res) => {
   try {
-    const newListing = new Listing({ ...req.body, user: req.user.id });
-    const saved = await newListing.save();
-    res.status(201).json(saved);
+    const newListing = new Listing(req.body);
+    await newListing.save();
+    res.status(201).json(newListing);
   } catch (err) {
-    res.status(500).json({ message: "Eroare la adăugare anunț" });
+    console.error("❌ Eroare POST /listings:", err);
+    res.status(500).json({ error: "Eroare la adăugarea anunțului" });
   }
 });
 
-// PUT - doar proprietarul poate edita
-router.put("/:id", authMiddleware, async (req, res) => {
+
+// ✅ PUT actualizare anunț
+router.put("/:id", async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ message: "Anunțul nu există" });
-
-    if (listing.user.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Nu ai voie să editezi acest anunț" });
+    const updatedListing = await Listing.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+    if (!updatedListing) {
+      return res.status(404).json({ error: "Anunțul nu există" });
     }
-
-    const updated = await Listing.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-    res.json(updated);
+    res.json(updatedListing);
   } catch (err) {
-    res.status(500).json({ message: "Eroare la actualizare anunț" });
+    console.error("❌ Eroare PUT /listings/:id:", err);
+    res.status(500).json({ error: "Eroare la actualizarea anunțului" });
   }
 });
 
-// DELETE - doar proprietarul poate șterge
-router.delete("/:id", authMiddleware, async (req, res) => {
+
+// ✅ DELETE ștergere anunț
+router.delete("/:id", async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ message: "Anunțul nu există" });
-
-    if (listing.user.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Nu ai voie să ștergi acest anunț" });
+    const deletedListing = await Listing.findByIdAndDelete(req.params.id);
+    if (!deletedListing) {
+      return res.status(404).json({ error: "Anunțul nu există" });
     }
-
-    await listing.deleteOne();
     res.json({ message: "Anunț șters cu succes" });
   } catch (err) {
-    res.status(500).json({ message: "Eroare la ștergere anunț" });
+    console.error("❌ Eroare DELETE /listings/:id:", err);
+    res.status(500).json({ error: "Eroare la ștergerea anunțului" });
   }
 });
 
