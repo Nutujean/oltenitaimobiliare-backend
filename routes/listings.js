@@ -30,16 +30,16 @@ function buildSort(sort) {
   return sortObj;
 }
 
-/** Lookup by email (listings.userEmail → users.email) ca să obținem telefonul din profil */
+/** Lookup by email (listings.userEmail → users.email) ca să obținem telefonul */
 function buildPipeline(match, sortObj) {
   return [
     { $match: match },
     { $sort: sortObj },
     {
       $lookup: {
-        from: "users",            // colecția de utilizatori
-        localField: "userEmail",  // câmp în listings
-        foreignField: "email",    // câmp în users
+        from: "users",
+        localField: "userEmail",
+        foreignField: "email",
         as: "ownerUser",
       },
     },
@@ -73,7 +73,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-/** DEBUG: /api/listings/__debug — înainte de /:id, dar oricum nu mai contează cu regex */
+/** DEBUG: /api/listings/__debug — confirmă câmpuri */
 router.get("/__debug", async (_req, res) => {
   try {
     const count = await Listing.countDocuments();
@@ -88,7 +88,7 @@ router.get("/__debug", async (_req, res) => {
   }
 });
 
-/** (opțional) /api/listings/__ids — ca să poți copia rapid un _id valid */
+/** DEBUG: /api/listings/__ids — ia rapid câteva ID-uri valide */
 router.get("/__ids", async (_req, res) => {
   try {
     const ids = await Listing.find({}, { _id: 1 }).sort({ createdAt: -1 }).limit(10).lean();
@@ -98,7 +98,25 @@ router.get("/__ids", async (_req, res) => {
   }
 });
 
-/** GET /api/listings/:id — acceptează DOAR ObjectId valid (24 hex) */
+/** AUX: /api/listings/by-id/:id — rută sigură pentru test (fără regex în path) */
+router.get("/by-id/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "ID invalid" });
+    }
+    const match = { _id: new mongoose.Types.ObjectId(id) };
+    const pipeline = buildPipeline(match, { createdAt: -1 });
+    const out = await Listing.aggregate(pipeline).limit(1);
+    if (!out || out.length === 0) return res.status(404).json({ error: "Anunțul nu există" });
+    res.json(out[0]);
+  } catch (err) {
+    console.error("❌ Eroare GET /listings/by-id/:id:", err);
+    res.status(500).json({ error: "Eroare la preluarea anunțului" });
+  }
+});
+
+/** PROD: /api/listings/:id — pt. frontend; acceptă DOAR 24 hex */
 router.get("/:id([0-9a-fA-F]{24})", async (req, res) => {
   try {
     const { id } = req.params;
