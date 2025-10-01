@@ -3,18 +3,26 @@ import Listing from "../models/Listing.js";
 
 const router = express.Router();
 
+// ... sus ai importuri și router etc.
 
-// ✅ GET toate anunțurile
+// ✅ GET toate anunțurile (cu filtru opțional după categorie)
 router.get("/", async (req, res) => {
   try {
-    const listings = await Listing.find().sort({ createdAt: -1 });
+    const { category } = req.query;
+    const query = {};
+
+    if (category) {
+      // filtru case-insensitive, potrivire exactă pe nume (ex. "Apartamente")
+      query.category = { $regex: new RegExp("^" + category + "$", "i") };
+    }
+
+    const listings = await Listing.find(query).sort({ createdAt: -1 });
     res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /listings:", err);
     res.status(500).json({ error: "Eroare la preluarea anunțurilor" });
   }
 });
-
 
 // ✅ GET un singur anunț după ID
 router.get("/:id", async (req, res) => {
