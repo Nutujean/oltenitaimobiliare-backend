@@ -3,16 +3,17 @@ import Listing from "../models/Listing.js";
 
 const router = express.Router();
 
-// ... sus ai importuri și router etc.
-
-// ✅ GET toate anunțurile (cu filtru opțional după categorie)
+/**
+ * GET /api/listings
+ * Suportă filtru opțional după categorie cu ?category=<Nume>
+ * (potrivire exactă, case-insensitive)
+ */
 router.get("/", async (req, res) => {
   try {
     const { category } = req.query;
     const query = {};
 
     if (category) {
-      // potrivire exactă, case-insensitive (ex: "Apartamente", "Case", "Spațiu comercial")
       query.category = { $regex: new RegExp("^" + category + "$", "i") };
     }
 
@@ -24,13 +25,14 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ✅ GET un singur anunț după ID
+/**
+ * GET /api/listings/:id
+ * Un anunț după ID
+ */
 router.get("/:id", async (req, res) => {
   try {
     const listing = await Listing.findById(req.params.id);
-    if (!listing) {
-      return res.status(404).json({ error: "Anunțul nu există" });
-    }
+    if (!listing) return res.status(404).json({ error: "Anunțul nu există" });
     res.json(listing);
   } catch (err) {
     console.error("❌ Eroare GET /listings/:id:", err);
@@ -38,8 +40,10 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-
-// ✅ POST adăugare anunț nou
+/**
+ * POST /api/listings
+ * Creează un anunț nou
+ */
 router.post("/", async (req, res) => {
   try {
     const newListing = new Listing(req.body);
@@ -51,8 +55,10 @@ router.post("/", async (req, res) => {
   }
 });
 
-
-// ✅ PUT actualizare anunț
+/**
+ * PUT /api/listings/:id
+ * Actualizează un anunț
+ */
 router.put("/:id", async (req, res) => {
   try {
     const updatedListing = await Listing.findByIdAndUpdate(
@@ -70,8 +76,10 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-
-// ✅ DELETE ștergere anunț
+/**
+ * DELETE /api/listings/:id
+ * Șterge un anunț
+ */
 router.delete("/:id", async (req, res) => {
   try {
     const deletedListing = await Listing.findByIdAndDelete(req.params.id);
