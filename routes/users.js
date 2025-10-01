@@ -1,19 +1,25 @@
 // routes/users.js
 import express from "express";
 import User from "../models/User.js";
-import auth from "../middleware/auth.js"; // ← dacă la tine se numește altfel (ex: verifyToken), modifică aici
+// 👇 importă exact numele fișierului tău
+import auth from "../middleware/authMiddlewaare.js"; // atenție: numele/calea corecte și .js inclus
 
 const router = express.Router();
 
 /**
  * GET /api/users/me
- * Returnează profilul utilizatorului autentificat (name, email, phone)
- * Necesită middleware-ul de auth care setează req.userId
+ * Necesită middleware de auth. Acceptă:
+ *  - req.userId  sau
+ *  - req.user.id / req.user._id  (dacă middleware-ul atașează obiectul user)
  */
 router.get("/me", auth, async (req, res) => {
   try {
-    const me = await User.findById(req.userId).select("name email phone");
+    const userId = req.userId || req.user?.id || req.user?._id;
+    if (!userId) return res.status(401).json({ error: "Neautorizat: lipsă userId" });
+
+    const me = await User.findById(userId).select("name email phone");
     if (!me) return res.status(404).json({ error: "Utilizator inexistent" });
+
     res.json(me);
   } catch (err) {
     console.error("❌ Eroare GET /users/me:", err);
