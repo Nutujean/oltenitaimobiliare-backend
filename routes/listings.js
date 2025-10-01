@@ -11,44 +11,58 @@ const router = express.Router();
  *  - location: potrivire exactă, case-insensitive (ex. "Oltenita")
  *  - sort: latest | oldest | price_asc | price_desc
  */
+// ✅ LISTĂ anunțuri — include contactPhone (listing.phone || owner.phone)
 router.get("/", async (req, res) => {
   try {
-    const { category, q, location, sort } = req.query;
+    const { category, q, location, sort, price } = req.query;
     const query = {};
 
-    if (category) {
-      query.category = { $regex: new RegExp("^" + category + "$", "i") };
-    }
-
+    if (category) query.category = { $regex: new RegExp("^" + category + "$", "i") };
     if (q) {
       const rx = new RegExp(q, "i");
       query.$or = [{ title: rx }, { description: rx }];
     }
-
-    if (location) {
-      query.location = { $regex: new RegExp("^" + location + "$", "i") };
+    if (location) query.location = { $regex: new RegExp("^" + location + "$", "i") };
+    if (price) {
+      const max = Number(price);
+      if (!Number.isNaN(max)) query.price = { ...(query.price || {}), $lte: max };
     }
 
-    // sortare
-    let sortObj = { createdAt: -1 }; // implicit: cele mai noi
+    let sortObj = { createdAt: -1 };
     if (sort === "oldest") sortObj = { createdAt: 1 };
     if (sort === "price_asc") sortObj = { price: 1, createdAt: -1 };
     if (sort === "price_desc") sortObj = { price: -1, createdAt: -1 };
 
-    const listings = await Listing.find(query).sort(sortObj);
-    res.json(listings);
+    // populate pentru a putea folosi owner.phone ca fallback
+    const docs = await Listing.find(query)
+      .populate({ path: "owner", select: "name phone" })
+      .sort(sortObj);
+
+    const data = docs.map((d) => {
+      const o = d.toObject();
+      o.contactPhone = o.phone || (o.owner && o.owner.phone) || null;
+      return o;
+    });
+
+    res.json(data);
   } catch (err) {
     console.error("❌ Eroare GET /listings:", err);
     res.status(500).json({ error: "Eroare la preluarea anunțurilor" });
   }
 });
 
-/** GET /api/listings/:id */
+// ✅ DETALIU anunț — include contactPhone (listing.phone || owner.phone)
 router.get("/:id", async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).json({ error: "Anunțul nu există" });
-    res.json(listing);
+    const doc = await Listing.findById(req.params.id)
+      .populate({ path: "owner", select: "name phone" });
+
+    if (!doc) return res.status(404).json({ error: "Anunțul nu există" });
+
+    const o = doc.toObject();
+    o.contactPhone = o.phone || (o.owner && o.owner.phone) || null;
+
+    res.json(o);
   } catch (err) {
     console.error("❌ Eroare GET /listings/:id:", err);
     res.status(500).json({ error: "Eroare la preluarea anunțului" });
