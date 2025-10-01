@@ -30,7 +30,7 @@ function buildSort(sort) {
   return sortObj;
 }
 
-/** Lookup by email (listings.userEmail → users.email) ca să obținem telefonul */
+/** Lookup users fie după email (listings.userEmail), fie după _id (listings.user) */
 function buildPipeline(match, sortObj) {
   return [
     { $match: match },
@@ -38,8 +38,31 @@ function buildPipeline(match, sortObj) {
     {
       $lookup: {
         from: "users",
-        localField: "userEmail",
-        foreignField: "email",
+        let: { ue: "$userEmail", uid: "$user" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $or: [
+                  {
+                    $and: [
+                      { $ne: ["$$ue", null] },
+                      { $ne: ["$$ue", ""] },
+                      { $eq: ["$email", "$$ue"] },
+                    ],
+                  },
+                  {
+                    $and: [
+                      { $ne: ["$$uid", null] },
+                      { $eq: ["$_id", "$$uid"] },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+          { $project: { phone: 1, email: 1, name: 1 } },
+        ],
         as: "ownerUser",
       },
     },
@@ -73,7 +96,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-/** DEBUG: /api/listings/__debug — confirmă câmpuri */
+/** DEBUG: /api/listings/__debug */
 router.get("/__debug", async (_req, res) => {
   try {
     const count = await Listing.countDocuments();
@@ -88,7 +111,7 @@ router.get("/__debug", async (_req, res) => {
   }
 });
 
-/** DEBUG: /api/listings/__ids — ia rapid câteva ID-uri valide */
+/** DEBUG: /api/listings/__ids — câteva _id-uri recente */
 router.get("/__ids", async (_req, res) => {
   try {
     const ids = await Listing.find({}, { _id: 1 }).sort({ createdAt: -1 }).limit(10).lean();
@@ -98,13 +121,11 @@ router.get("/__ids", async (_req, res) => {
   }
 });
 
-/** AUX: /api/listings/by-id/:id — rută sigură pentru test (fără regex în path) */
+/** AUX: /api/listings/by-id/:id — test fără ambiguitate de path */
 router.get("/by-id/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "ID invalid" });
-    }
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ error: "ID invalid" });
     const match = { _id: new mongoose.Types.ObjectId(id) };
     const pipeline = buildPipeline(match, { createdAt: -1 });
     const out = await Listing.aggregate(pipeline).limit(1);
@@ -116,7 +137,7 @@ router.get("/by-id/:id", async (req, res) => {
   }
 });
 
-/** PROD: /api/listings/:id — pt. frontend; acceptă DOAR 24 hex */
+/** PROD: /api/listings/:id — acceptează DOAR 24 hex (pt. frontend) */
 router.get("/:id([0-9a-fA-F]{24})", async (req, res) => {
   try {
     const { id } = req.params;
