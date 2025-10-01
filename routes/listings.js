@@ -6,46 +6,87 @@ import Listing from "../models/Listing.js";
 const router = express.Router();
 
 /**
- * GET /api/listings
- * Filtre: category, q, location, price, sort (latest|oldest|price_asc|price_desc)
- * Fără populate (safe-mode). contactPhone = listing.phone
+ * Build query din ?category, ?q, ?location, ?price
+ */
+function buildMatchQuery(qs) {
+  const { category, q, location, price } = qs;
+  const query = {};
+  if (category) query.category = { $regex: new RegExp("^" + category + "$", "i") };
+  if (q) {
+    const rx = new RegExp(q, "i");
+    query.$or = [{ title: rx }, { description: rx }];
+  }
+  if (location) query.location = { $regex: new RegExp("^" + location + "$", "i") };
+  if (price) {
+    const max = Number(price);
+    if (!Number.isNaN(max)) query.price = { ...(query.price || {}), $lte: max };
+  }
+  return query;
+}
+
+/**
+ * Build sort din ?sort
+ */
+function buildSort(sort) {
+  let sortObj = { createdAt: -1 };
+  if (sort === "oldest") sortObj = { createdAt: 1 };
+  if (sort === "price_asc") sortObj = { price: 1, createdAt: -1 };
+  if (sort === "price_desc") sortObj = { price: -1, createdAt: -1 };
+  return sortObj;
+}
+
+/**
+ * Pipeline comun: JOIN după userEmail -> users.email pentru a obține telefonul
+ * Notă: colecția de utilizatori în Mongo e "users" (plural, lowercase).
+ */
+function buildPipeline(match, sortObj) {
+  return [
+    { $match: match },
+    { $sort: sortObj },
+    {
+      $lookup: {
+        from: "users",
+        localField: "userEmail",
+        foreignField: "email",
+        as: "ownerUser",
+      },
+    },
+    {
+      $addFields: {
+        // dacă ai un camp phone pe listing, el are prioritate; altfel ia din profil
+        contactPhone: {
+          $let: {
+            vars: { owner: { $arrayElemAt: ["$ownerUser", 0] } },
+            in: { $ifNull: ["$phone", "$$owner.phone"] },
+          },
+        },
+      },
+    },
+    { $project: { ownerUser: 0 } },
+  ];
+}
+
+/**
+ * GET /api/listings — listă cu filtre + contactPhone din profil (by email)
  */
 router.get("/", async (req, res) => {
   try {
-    const { category, q, location, price, sort } = req.query;
-    const query = {};
+    const match = buildMatchQuery(req.query);
+    const sortObj = buildSort(req.query.sort);
+    const pipeline = buildPipeline(match, sortObj);
 
-    if (category) query.category = { $regex: new RegExp("^" + category + "$", "i") };
-    if (q) {
-      const rx = new RegExp(q, "i");
-      query.$or = [{ title: rx }, { description: rx }];
-    }
-    if (location) query.location = { $regex: new RegExp("^" + location + "$", "i") };
-    if (price) {
-      const max = Number(price);
-      if (!Number.isNaN(max)) query.price = { ...(query.price || {}), $lte: max };
-    }
-
-    let sortObj = { createdAt: -1 };
-    if (sort === "oldest") sortObj = { createdAt: 1 };
-    if (sort === "price_asc") sortObj = { price: 1, createdAt: -1 };
-    if (sort === "price_desc") sortObj = { price: -1, createdAt: -1 };
-
-    const docs = await Listing.find(query).sort(sortObj).lean();
-
-    const data = docs.map((o) => ({
-      ...o,
-      contactPhone: o.phone || null,
-    }));
-
-    res.json(data);
+    const docs = await Listing.aggregate(pipeline);
+    return res.json(docs);
   } catch (err) {
     console.error("❌ Eroare GET /listings:", err);
-    res.status(500).json({ error: "Eroare la preluarea anunțurilor" });
+    return res.status(500).json({ error: "Eroare la preluarea anunțurilor" });
   }
 });
 
-/** 🔎 DEBUG – ATENȚIE: înainte de /:id ca să nu fie „înghițită” */
+/**
+ * GET /api/listings/__debug — rapid check colecție
+ * (ține ruta asta ÎNAINTE de /:id)
+ */
 router.get("/__debug", async (req, res) => {
   try {
     const count = await Listing.countDocuments();
@@ -61,7 +102,7 @@ router.get("/__debug", async (req, res) => {
 });
 
 /**
- * GET /api/listings/:id — cu validare de ObjectId
+ * GET /api/listings/:id — un anunț + contactPhone din profil (by email)
  */
 router.get("/:id", async (req, res) => {
   try {
@@ -69,14 +110,19 @@ router.get("/:id", async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID invalid" });
     }
-    const doc = await Listing.findById(id).lean();
-    if (!doc) return res.status(404).json({ error: "Anunțul nu există" });
 
-    const data = { ...doc, contactPhone: doc.phone || null };
-    res.json(data);
+    const match = { _id: new mongoose.Types.ObjectId(id) };
+    const pipeline = buildPipeline(match, { createdAt: -1 });
+
+    const out = await Listing.aggregate(pipeline).limit(1);
+    if (!out || out.length === 0) {
+      return res.status(404).json({ error: "Anunțul nu există" });
+    }
+
+    return res.json(out[0]);
   } catch (err) {
     console.error("❌ Eroare GET /listings/:id:", err);
-    res.status(500).json({ error: "Eroare la preluarea anunțului" });
+    return res.status(500).json({ error: "Eroare la preluarea anunțului" });
   }
 });
 
