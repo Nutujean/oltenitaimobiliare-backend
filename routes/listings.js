@@ -5,16 +5,15 @@ const router = express.Router();
 
 /**
  * GET /api/listings
- * Filtre (toate opționale):
- * - category: potrivire exactă, case-insensitive (ex. "Apartamente")
- * - q: căutare text în title/description (case-insensitive)
- * - location: căutare text în location (case-insensitive)
- * - price: preț maxim (<=)
- * Sortare (opțional): sort = latest | price_asc | price_desc
+ * Filtre opționale:
+ *  - category: potrivire exactă, case-insensitive (ex. "Apartamente")
+ *  - q: căutare text în title/description (case-insensitive)
+ *  - location: potrivire exactă, case-insensitive (ex. "Oltenita")
+ *  - sort: latest | oldest | price_asc | price_desc
  */
 router.get("/", async (req, res) => {
   try {
-    const { category, q, location, price, sort } = req.query;
+    const { category, q, location, sort } = req.query;
     const query = {};
 
     if (category) {
@@ -27,21 +26,14 @@ router.get("/", async (req, res) => {
     }
 
     if (location) {
-      query.location = { $regex: new RegExp(location, "i") };
+      query.location = { $regex: new RegExp("^" + location + "$", "i") };
     }
 
-    if (price) {
-      const max = Number(price);
-      if (!Number.isNaN(max)) {
-        query.price = { ...(query.price || {}), $lte: max };
-      }
-    }
-
-    // 🔽 sortare
-    let sortObj = { createdAt: -1 }; // implicit cele mai noi
+    // sortare
+    let sortObj = { createdAt: -1 }; // implicit: cele mai noi
+    if (sort === "oldest") sortObj = { createdAt: 1 };
     if (sort === "price_asc") sortObj = { price: 1, createdAt: -1 };
     if (sort === "price_desc") sortObj = { price: -1, createdAt: -1 };
-    if (sort === "latest") sortObj = { createdAt: -1 };
 
     const listings = await Listing.find(query).sort(sortObj);
     res.json(listings);
