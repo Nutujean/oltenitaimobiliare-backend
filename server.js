@@ -14,21 +14,35 @@ dotenv.config();
 const app = express();
 
 // ---- CORS (prod + localhost) ----
+// ---- CORS (prod + localhost + preflight safe) ----
+import cors from "cors";
+
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://oltenitaimobiliare.ro";
 const LOCAL_URL = process.env.LOCAL_URL || "http://localhost:5173";
-
-const whitelist = [FRONTEND_URL, LOCAL_URL].filter(Boolean);
+const allowedOrigins = [
+  FRONTEND_URL,
+  LOCAL_URL,
+  "http://127.0.0.1:5173",
+].filter(Boolean);
 
 app.use(cors({
   origin(origin, callback) {
-    // permite și tool-uri fără origin (ex. Postman)
+    // permite și unelte fără origin (ex. server-to-server, Postman)
     if (!origin) return callback(null, true);
-    if (whitelist.includes(origin)) return callback(null, true);
-    return callback(new Error(`CORS blocat pentru origin: ${origin}`));
+    // ✅ DEZACTIVĂ TEMPORAR RESTRICȚIA: acceptă orice origin
+    // COMENTEAZĂ LINIA DE MAI JOS CÂND VREI SĂ RESTRÂNGI STRICT LA ALLOWED
+    return callback(null, true);
+
+    // ❗ Dacă vrei să restrângi strict, înlocuiește linia de sus cu:
+    // if (allowedOrigins.includes(origin)) return callback(null, true);
+    // return callback(new Error(`CORS blocat pentru origin: ${origin}`));
   },
-  credentials: false, // setează true doar dacă trimiți cookie-uri/sesiuni
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: false, // true DOAR dacă folosești cookie-uri/sesiuni
 }));
-app.options("*", cors()); // preflight
+app.options("*", cors());
+ // preflight
 
 // ---- Body parsers ----
 app.use(express.json({ limit: "10mb" }));
