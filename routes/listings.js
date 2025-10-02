@@ -82,13 +82,23 @@ function buildPipeline(match, sortObj) {
   ];
 }
 
+async function getAuthIdentity(req) {
+  const userId = req.userId || req.user?.id || req.user?._id || null;
+  let email = null;
+  if (userId && mongoose.Types.ObjectId.isValid(String(userId))) {
+    const u = await User.findById(userId).select("email").lean();
+    email = u?.email || null;
+  }
+  return { userId: userId ? new mongoose.Types.ObjectId(userId) : null, email };
+}
+
+function userOwnsListing(listing, userId, email) {
+  const ownsById = listing.user && userId && String(listing.user) === String(userId);
+  const ownsByEmail = listing.userEmail && email && listing.userEmail === email;
+  return Boolean(ownsById || ownsByEmail);
+}
+
 /* ---------------- CREATE (POST) ---------------- */
-/**
- * POST /api/listings  (alias: /api/listings/create)
- * Body:
- *  { title, description, price, category, location, images: string[], imageUrl, status, phone? }
- * Necesită auth (Bearer). Setează automat user și userEmail (dacă există).
- */
 async function handleCreate(req, res) {
   try {
     const {
@@ -100,32 +110,19 @@ async function handleCreate(req, res) {
       images = [],
       imageUrl = "",
       status = "disponibil",
-      phone, // opțional – dacă vrei să salvezi numărul direct pe anunț
+      phone,
     } = req.body;
 
-    // log minimal pt. diagnoză
-    console.log("→ POST /listings body:", {
-      title: String(title).slice(0, 60),
-      price,
-      category,
-      location,
-      imagesCount: Array.isArray(images) ? images.length : 0,
-      hasImageUrl: Boolean(imageUrl),
-    });
-
-    // validări de bază
     if (!String(title).trim()) return res.status(400).json({ error: "Titlul este obligatoriu" });
     const numericPrice = Number(price);
     if (Number.isNaN(numericPrice) || numericPrice < 0) {
       return res.status(400).json({ error: "Preț invalid" });
     }
 
-    // pregătește imaginile
     let imgs = Array.isArray(images) ? images.filter(Boolean) : [];
     if (imgs.length === 0 && imageUrl) imgs = [imageUrl];
 
-    // normalizează userId din middleware (acceptă diverse variante)
-    const userId = req.userId || req.user?.id || req.user?._id || null;
+    const { userId, email } = await getAuthIdentity(req);
 
     const listingData = {
       title: String(title).trim(),
@@ -139,32 +136,17 @@ async function handleCreate(req, res) {
       rezervat: false,
     };
 
-    // setează user dacă îl avem (nu forțăm required aici; lăsăm schema să decidă)
-    if (userId) {
-      listingData.user = new mongoose.Types.ObjectId(userId);
-    }
-
-    // setează userEmail dacă putem
-    try {
-      if (userId) {
-        const u = await User.findById(userId).select("email").lean();
-        if (u?.email) listingData.userEmail = u.email;
-      }
-    } catch (_) {
-      // nu blocăm create dacă nu găsim user
-    }
-
+    if (userId) listingData.user = userId;
+    if (email) listingData.userEmail = email;
     if (phone) listingData.phone = String(phone);
 
     const created = await Listing.create(listingData);
     return res.status(201).json(created);
   } catch (err) {
-    // diferențiază erorile de validare pentru răspuns 400 clar
     if (err?.name === "ValidationError") {
       const details = Object.fromEntries(
         Object.entries(err.errors || {}).map(([k, v]) => [k, v.message])
       );
-      console.error("❌ ValidationError POST /listings:", details);
       return res.status(400).json({ error: "Validare eșuată", details });
     }
     console.error("❌ Eroare POST /listings:", err);
@@ -188,6 +170,26 @@ router.get("/", async (req, res) => {
   } catch (err) {
     console.error("❌ Eroare GET /listings:", err);
     res.status(500).json({ error: "Eroare la preluarea anunțurilor" });
+  }
+});
+
+/** GET /api/listings/me — anunțurile utilizatorului curent */
+router.get("/me", auth, async (req, res) => {
+  try {
+    const { userId, email } = await getAuthIdentity(req);
+    if (!userId && !email) {
+      return res.status(401).json({ error: "Nu ești autentificat" });
+    }
+    const or = [];
+    if (userId) or.push({ user: userId });
+    if (email) or.push({ userEmail: email });
+    const match = { $or: or };
+    const pipeline = buildPipeline(match, { createdAt: -1 });
+    const docs = await Listing.aggregate(pipeline);
+    res.json(docs);
+  } catch (err) {
+    console.error("❌ Eroare GET /listings/me:", err);
+    res.status(500).json({ error: "Eroare la preluarea anunțurilor mele" });
   }
 });
 
@@ -244,6 +246,69 @@ router.get("/:id([0-9a-fA-F]{24})", async (req, res) => {
   } catch (err) {
     console.error("❌ Eroare GET /listings/:id:", err);
     res.status(500).json({ error: "Eroare la preluarea anunțului" });
+  }
+});
+
+/* ---------------- UPDATE + DELETE ---------------- */
+
+/** PUT /api/listings/:id — update (doar de către proprietar) */
+router.put("/:id([0-9a-fA-F]{24})", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const listing = await Listing.findById(id);
+    if (!listing) return res.status(404).json({ error: "Anunțul nu există" });
+
+    const { userId, email } = await getAuthIdentity(req);
+    if (!userOwnsListing(listing, userId, email)) {
+      return res.status(403).json({ error: "Nu ai dreptul să modifici acest anunț" });
+    }
+
+    const {
+      title, description, price, category, location,
+      images = [], imageUrl = "", status, rezervat, phone
+    } = req.body;
+
+    const update = {};
+    if (title !== undefined) update.title = String(title);
+    if (description !== undefined) update.description = String(description);
+    if (price !== undefined) update.price = Number(price);
+    if (category !== undefined) update.category = String(category);
+    if (location !== undefined) update.location = String(location);
+    if (Array.isArray(images)) update.images = images.filter(Boolean);
+    if (imageUrl !== undefined) update.imageUrl = String(imageUrl);
+    if (status !== undefined) update.status = String(status);
+    if (rezervat !== undefined) update.rezervat = Boolean(rezervat);
+    if (phone !== undefined) update.phone = String(phone);
+
+    if (update.images && update.images.length > 0 && !update.imageUrl) {
+      update.imageUrl = update.images[0];
+    }
+
+    const updated = await Listing.findByIdAndUpdate(id, update, { new: true });
+    res.json(updated);
+  } catch (err) {
+    console.error("❌ Eroare PUT /listings/:id:", err);
+    res.status(500).json({ error: "Eroare la actualizarea anunțului" });
+  }
+});
+
+/** DELETE /api/listings/:id — ștergere (doar de către proprietar) */
+router.delete("/:id([0-9a-fA-F]{24})", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const listing = await Listing.findById(id);
+    if (!listing) return res.status(404).json({ error: "Anunțul nu există" });
+
+    const { userId, email } = await getAuthIdentity(req);
+    if (!userOwnsListing(listing, userId, email)) {
+      return res.status(403).json({ error: "Nu ai dreptul să ștergi acest anunț" });
+    }
+
+    await Listing.findByIdAndDelete(id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("❌ Eroare DELETE /listings/:id:", err);
+    res.status(500).json({ error: "Eroare la ștergerea anunțului" });
   }
 });
 
