@@ -2,6 +2,8 @@
 import express from "express";
 import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
+import User from "../models/User.js";
+import auth from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -80,7 +82,77 @@ function buildPipeline(match, sortObj) {
   ];
 }
 
-/* ---------------- routes ---------------- */
+/* ---------------- CREATE (POST) ---------------- */
+/**
+ * POST /api/listings  (alias: /api/listings/create)
+ * Body așteptat (JSON):
+ *  { title, description, price, category, location, images (string[]), imageUrl (string), status }
+ * Necesită auth (Bearer token). Setează automat user și, dacă găsim, userEmail.
+ */
+async function handleCreate(req, res) {
+  try {
+    const {
+      title = "",
+      description = "",
+      price,
+      category = "",
+      location = "",
+      images = [],
+      imageUrl = "",
+      status = "disponibil",
+      phone, // opțional, dacă vrei să salvezi telefon direct pe anunț
+    } = req.body;
+
+    // validări minimale
+    if (!title.trim()) return res.status(400).json({ error: "Titlul este obligatoriu" });
+    const numericPrice = Number(price);
+    if (Number.isNaN(numericPrice) || numericPrice < 0) {
+      return res.status(400).json({ error: "Preț invalid" });
+    }
+
+    // pregătește imaginile: dacă nu ai array, dar ai imageUrl simplu
+    let imgs = Array.isArray(images) ? images.filter(Boolean) : [];
+    if (imgs.length === 0 && imageUrl) imgs = [imageUrl];
+
+    // asociază utilizatorul din token
+    const listingData = {
+      title: title.trim(),
+      description: description || "",
+      price: numericPrice,
+      category: category || "",
+      location: location || "",
+      images: imgs,
+      imageUrl: imgs.length > 0 ? imgs[0] : imageUrl || "",
+      status,
+      rezervat: false,
+      user: req.userId,        // dacă schema are acest câmp, se salvează; altfel e ignorat
+    };
+
+    // încearcă să setezi și userEmail (dacă modelul tău are acest câmp)
+    try {
+      if (req.userId) {
+        const u = await User.findById(req.userId).select("email").lean();
+        if (u?.email) listingData.userEmail = u.email;
+      }
+    } catch (_) {
+      // ignorăm – nu blocăm create
+    }
+
+    // opțional: salvăm phone direct pe listing ca fallback
+    if (phone) listingData.phone = String(phone);
+
+    const created = await Listing.create(listingData);
+    return res.status(201).json(created);
+  } catch (err) {
+    console.error("❌ Eroare POST /listings:", err);
+    return res.status(500).json({ error: "Eroare la crearea anunțului" });
+  }
+}
+
+router.post("/", auth, handleCreate);
+router.post("/create", auth, handleCreate);
+
+/* ---------------- LIST + READ ---------------- */
 
 /** GET /api/listings — listă cu filtre + contactPhone */
 router.get("/", async (req, res) => {
