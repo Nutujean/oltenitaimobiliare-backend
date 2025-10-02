@@ -85,9 +85,9 @@ function buildPipeline(match, sortObj) {
 /* ---------------- CREATE (POST) ---------------- */
 /**
  * POST /api/listings  (alias: /api/listings/create)
- * Body așteptat (JSON):
- *  { title, description, price, category, location, images (string[]), imageUrl (string), status }
- * Necesită auth (Bearer token). Setează automat user și, dacă găsim, userEmail.
+ * Body:
+ *  { title, description, price, category, location, images: string[], imageUrl, status, phone? }
+ * Necesită auth (Bearer). Setează automat user și userEmail (dacă există).
  */
 async function handleCreate(req, res) {
   try {
@@ -100,50 +100,73 @@ async function handleCreate(req, res) {
       images = [],
       imageUrl = "",
       status = "disponibil",
-      phone, // opțional, dacă vrei să salvezi telefon direct pe anunț
+      phone, // opțional – dacă vrei să salvezi numărul direct pe anunț
     } = req.body;
 
-    // validări minimale
-    if (!title.trim()) return res.status(400).json({ error: "Titlul este obligatoriu" });
+    // log minimal pt. diagnoză
+    console.log("→ POST /listings body:", {
+      title: String(title).slice(0, 60),
+      price,
+      category,
+      location,
+      imagesCount: Array.isArray(images) ? images.length : 0,
+      hasImageUrl: Boolean(imageUrl),
+    });
+
+    // validări de bază
+    if (!String(title).trim()) return res.status(400).json({ error: "Titlul este obligatoriu" });
     const numericPrice = Number(price);
     if (Number.isNaN(numericPrice) || numericPrice < 0) {
       return res.status(400).json({ error: "Preț invalid" });
     }
 
-    // pregătește imaginile: dacă nu ai array, dar ai imageUrl simplu
+    // pregătește imaginile
     let imgs = Array.isArray(images) ? images.filter(Boolean) : [];
     if (imgs.length === 0 && imageUrl) imgs = [imageUrl];
 
-    // asociază utilizatorul din token
+    // normalizează userId din middleware (acceptă diverse variante)
+    const userId = req.userId || req.user?.id || req.user?._id || null;
+
     const listingData = {
-      title: title.trim(),
-      description: description || "",
+      title: String(title).trim(),
+      description: String(description || ""),
       price: numericPrice,
-      category: category || "",
-      location: location || "",
+      category: String(category || ""),
+      location: String(location || ""),
       images: imgs,
-      imageUrl: imgs.length > 0 ? imgs[0] : imageUrl || "",
+      imageUrl: imgs.length > 0 ? imgs[0] : String(imageUrl || ""),
       status,
       rezervat: false,
-      user: req.userId,        // dacă schema are acest câmp, se salvează; altfel e ignorat
     };
 
-    // încearcă să setezi și userEmail (dacă modelul tău are acest câmp)
+    // setează user dacă îl avem (nu forțăm required aici; lăsăm schema să decidă)
+    if (userId) {
+      listingData.user = new mongoose.Types.ObjectId(userId);
+    }
+
+    // setează userEmail dacă putem
     try {
-      if (req.userId) {
-        const u = await User.findById(req.userId).select("email").lean();
+      if (userId) {
+        const u = await User.findById(userId).select("email").lean();
         if (u?.email) listingData.userEmail = u.email;
       }
     } catch (_) {
-      // ignorăm – nu blocăm create
+      // nu blocăm create dacă nu găsim user
     }
 
-    // opțional: salvăm phone direct pe listing ca fallback
     if (phone) listingData.phone = String(phone);
 
     const created = await Listing.create(listingData);
     return res.status(201).json(created);
   } catch (err) {
+    // diferențiază erorile de validare pentru răspuns 400 clar
+    if (err?.name === "ValidationError") {
+      const details = Object.fromEntries(
+        Object.entries(err.errors || {}).map(([k, v]) => [k, v.message])
+      );
+      console.error("❌ ValidationError POST /listings:", details);
+      return res.status(400).json({ error: "Validare eșuată", details });
+    }
     console.error("❌ Eroare POST /listings:", err);
     return res.status(500).json({ error: "Eroare la crearea anunțului" });
   }
