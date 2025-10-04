@@ -21,6 +21,21 @@ function normalizeImagesOrThrow(body) {
   return arr.slice(0, MAX_IMAGES);
 }
 
+// acceptă "2,5" sau "2.5" și întoarce număr cu max 2 zecimale
+function parsePrice(val) {
+  if (typeof val === "number" && Number.isFinite(val)) {
+    return Math.round(val * 100) / 100;
+  }
+  if (typeof val === "string") {
+    const s = val.trim().replace(/\s+/g, "").replace(",", ".");
+    const n = Number(s);
+    if (Number.isFinite(n)) {
+      return Math.round(n * 100) / 100;
+    }
+  }
+  return undefined;
+}
+
 function mapSort(sort) {
   switch ((sort || "").toLowerCase()) {
     case "oldest":
@@ -42,7 +57,6 @@ router.get("/", async (req, res) => {
 
     const filter = {};
 
-    // text search (simplu, cu regex)
     if (q) {
       const rx = new RegExp(q.trim().replace(/\s+/g, ".*"), "i");
       filter.$or = [{ title: rx }, { description: rx }, { location: rx }];
@@ -51,7 +65,7 @@ router.get("/", async (req, res) => {
     if (category) filter.category = category;
     if (location) filter.location = location;
 
-    // tip tranzacție: ?type=vanzare | inchiriere (sau ?transactionType=...)
+    // ?type=vanzare | inchiriere (sau ?transactionType=...)
     const t = (req.query.transactionType || req.query.type || "").toLowerCase();
     if (t && ["vanzare", "inchiriere"].includes(t)) {
       filter.transactionType = t;
@@ -89,7 +103,6 @@ router.get("/me", requireAuth, async (req, res) => {
 // ------------ GET /api/listings/:id ------------
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
-  // Acceptă și /anunt/<slug>-<id>
   const matchId = (id || "").match(/[0-9a-fA-F]{24}$/)?.[0] || id;
 
   if (!mongoose.Types.ObjectId.isValid(matchId)) {
@@ -112,15 +125,25 @@ router.post("/", requireAuth, async (req, res) => {
     const images = normalizeImagesOrThrow(req.body);
     const payload = { ...req.body, images };
 
-    // normalizare transactionType
+    // transactionType
     const t = (req.body.transactionType || "").toLowerCase();
     payload.transactionType = ["vanzare", "inchiriere"].includes(t) ? t : "vanzare";
 
-    // atașează proprietarul, dacă vine din token
+    // price (acceptă virgulă)
+    const p = parsePrice(req.body.price);
+    if (p === undefined) {
+      return res.status(400).json({ error: "Preț invalid" });
+    }
+    if (p < 0) {
+      return res.status(400).json({ error: "Prețul trebuie să fie pozitiv" });
+    }
+    payload.price = p;
+
+    // proprietar din token
     if (req.user?.id) payload.user = req.user.id;
     if (req.user?.email) payload.userEmail = (req.user.email || "").toLowerCase();
 
-    delete payload.imageUrl; // evităm dublarea
+    delete payload.imageUrl;
 
     const created = await Listing.create(payload);
     res.json(created);
@@ -147,6 +170,15 @@ router.put("/:id", requireAuth, async (req, res) => {
 
     const t = (req.body.transactionType || "").toLowerCase();
     payload.transactionType = ["vanzare", "inchiriere"].includes(t) ? t : "vanzare";
+
+    const p = parsePrice(req.body.price);
+    if (p === undefined) {
+      return res.status(400).json({ error: "Preț invalid" });
+    }
+    if (p < 0) {
+      return res.status(400).json({ error: "Prețul trebuie să fie pozitiv" });
+    }
+    payload.price = p;
 
     delete payload.imageUrl;
 
