@@ -18,12 +18,24 @@ const normalizeDealType = (v) => {
   return x === "inchiriere" ? "inchiriere" : x === "vanzare" ? "vanzare" : undefined;
 };
 
-// GET /api/listings (cu filtre & sort)
+// GET /api/listings (cu filtre, inclusiv avansate) --------------------------
 router.get("/", async (req, res) => {
   try {
-    const { q = "", category = "", location = "", sort = "latest", dealType = "" } = req.query;
+    const {
+      q = "",
+      category = "",
+      location = "",
+      sort = "latest",
+      dealType = "",
+      roomsMin = "",
+      surfaceMin = "",
+      priceMin = "",
+      priceMax = "",
+    } = req.query;
 
     const filter = {};
+
+    // căutare liberă
     if (q) {
       filter.$or = [
         { title: { $regex: q, $options: "i" } },
@@ -31,11 +43,25 @@ router.get("/", async (req, res) => {
         { location: { $regex: q, $options: "i" } },
       ];
     }
+
     if (category) filter.category = category;
     if (location) filter.location = location;
 
     const dt = normalizeDealType(dealType);
     if (dt) filter.dealType = dt;
+
+    // filtre numerice
+    const rMin = toNum(roomsMin);
+    if (rMin !== undefined) filter.rooms = { ...(filter.rooms || {}), $gte: rMin };
+
+    const sMin = toNum(surfaceMin);
+    if (sMin !== undefined) filter.surface = { ...(filter.surface || {}), $gte: sMin };
+
+    const pMin = toNum(priceMin);
+    if (pMin !== undefined) filter.price = { ...(filter.price || {}), $gte: pMin };
+
+    const pMax = toNum(priceMax);
+    if (pMax !== undefined) filter.price = { ...(filter.price || {}), $lte: pMax };
 
     const sortMap = {
       latest: { createdAt: -1 },
@@ -53,7 +79,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET /api/listings/me — doar ale utilizatorului curent (token)
+// GET /api/listings/me ------------------------------------------------------
 router.get("/me", auth, async (req, res) => {
   try {
     const listings = await Listing.find({ user: req.userId })
@@ -66,7 +92,7 @@ router.get("/me", auth, async (req, res) => {
   }
 });
 
-// GET /api/listings/:id
+// GET /api/listings/:id -----------------------------------------------------
 router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -82,24 +108,20 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// POST /api/listings — creează (trebuie token)
+// POST /api/listings --------------------------------------------------------
 router.post("/", auth, async (req, res) => {
   try {
     const payload = { ...(req.body || {}) };
     payload.user = req.userId;
 
-    // imagini
     if (payload.images && !Array.isArray(payload.images)) {
       payload.images = [payload.images].filter(Boolean);
     }
 
-    // numeric
     payload.price = payload.price !== undefined ? toNum(payload.price) : undefined;
     payload.floor = toNum(payload.floor);
     payload.surface = toNum(payload.surface);
     payload.rooms = toNum(payload.rooms);
-
-    // dealType normalizat
     payload.dealType = normalizeDealType(payload.dealType) || "vanzare";
 
     const created = await Listing.create(payload);
@@ -110,7 +132,7 @@ router.post("/", auth, async (req, res) => {
   }
 });
 
-// PUT /api/listings/:id — update (doar proprietar)
+// PUT /api/listings/:id -----------------------------------------------------
 router.put("/:id", auth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -143,7 +165,7 @@ router.put("/:id", auth, async (req, res) => {
   }
 });
 
-// DELETE /api/listings/:id — șterge (doar proprietar)
+// DELETE /api/listings/:id --------------------------------------------------
 router.delete("/:id", auth, async (req, res) => {
   try {
     const { id } = req.params;
