@@ -6,15 +6,22 @@ import auth from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 const { Types } = mongoose;
+
 const toNum = (v) =>
   v === "" || v === null || v === undefined || Number.isNaN(Number(v))
     ? undefined
     : Number(v);
 
+const normalizeDealType = (v) => {
+  if (!v) return undefined;
+  const x = String(v).toLowerCase();
+  return x === "inchiriere" ? "inchiriere" : x === "vanzare" ? "vanzare" : undefined;
+};
+
 // GET /api/listings (cu filtre & sort)
 router.get("/", async (req, res) => {
   try {
-    const { q = "", category = "", location = "", sort = "latest" } = req.query;
+    const { q = "", category = "", location = "", sort = "latest", dealType = "" } = req.query;
 
     const filter = {};
     if (q) {
@@ -26,6 +33,9 @@ router.get("/", async (req, res) => {
     }
     if (category) filter.category = category;
     if (location) filter.location = location;
+
+    const dt = normalizeDealType(dealType);
+    if (dt) filter.dealType = dt;
 
     const sortMap = {
       latest: { createdAt: -1 },
@@ -78,15 +88,19 @@ router.post("/", auth, async (req, res) => {
     const payload = { ...(req.body || {}) };
     payload.user = req.userId;
 
-    // normalizează imagini
+    // imagini
     if (payload.images && !Array.isArray(payload.images)) {
       payload.images = [payload.images].filter(Boolean);
     }
 
-    // ➕ normalizează câmpurile noi ca numere
+    // numeric
+    payload.price = payload.price !== undefined ? toNum(payload.price) : undefined;
     payload.floor = toNum(payload.floor);
     payload.surface = toNum(payload.surface);
     payload.rooms = toNum(payload.rooms);
+
+    // dealType normalizat
+    payload.dealType = normalizeDealType(payload.dealType) || "vanzare";
 
     const created = await Listing.create(payload);
     res.status(201).json(created);
@@ -115,10 +129,11 @@ router.put("/:id", auth, async (req, res) => {
       update.images = [update.images].filter(Boolean);
     }
 
-    // ➕ normalizează câmpurile noi ca numere
+    if ("price" in update) update.price = toNum(update.price);
     if ("floor" in update) update.floor = toNum(update.floor);
     if ("surface" in update) update.surface = toNum(update.surface);
     if ("rooms" in update) update.rooms = toNum(update.rooms);
+    if ("dealType" in update) update.dealType = normalizeDealType(update.dealType) || "vanzare";
 
     const updated = await Listing.findByIdAndUpdate(id, update, { new: true });
     res.json(updated);
