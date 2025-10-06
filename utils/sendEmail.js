@@ -1,33 +1,38 @@
 // utils/sendEmail.js
-import nodemailer from "nodemailer";
-
-const {
-  SMTP_HOST,
-  SMTP_PORT,
-  SMTP_USER,
-  SMTP_PASS,
-  MAIL_FROM,
-} = process.env;
-
-// Transport prin Brevo (SMTP pe 587 cu STARTTLS)
-const transporter = nodemailer.createTransport({
-  host: SMTP_HOST || "smtp-relay.brevo.com",
-  port: Number(SMTP_PORT || 587),
-  secure: false, // pe 587 folosim STARTTLS
-  auth: { user: SMTP_USER, pass: SMTP_PASS },
-});
+// Trimite emailuri prin Brevo HTTP API (fără SMTP/porturi)
+const BREVO_API_KEY = process.env.BREVO_API_KEY; // setează în Render → Environment
+const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || "Oltenița Imobiliare";
+const MAIL_FROM_EMAIL = process.env.MAIL_FROM_EMAIL || "oltenitaimobiliare@gmail.com";
 
 /**
  * Trimite un email
- * @param {{to:string, subject:string, html:string, replyTo?:string}} param0
+ * @param {{to:string, subject:string, html:string, replyTo?:string}} p
  */
 export async function sendEmail({ to, subject, html, replyTo }) {
   if (!to) throw new Error("Missing 'to' address");
-  return transporter.sendMail({
-    from: MAIL_FROM || `Oltenița Imobiliare <${SMTP_USER}>`,
-    to,
+  if (!BREVO_API_KEY) throw new Error("Missing BREVO_API_KEY");
+
+  const payload = {
+    sender: { name: MAIL_FROM_NAME, email: MAIL_FROM_EMAIL },
+    to: [{ email: to }],
     subject,
-    html,
+    htmlContent: html,
     ...(replyTo ? { replyTo } : {}),
+  };
+
+  const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "api-key": BREVO_API_KEY,
+    },
+    body: JSON.stringify(payload),
   });
+
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data?.message || data?.error || `Brevo API error ${resp.status}`);
+  }
+  return data;
 }
