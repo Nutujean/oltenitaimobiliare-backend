@@ -1,27 +1,30 @@
+// middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
 
-const authMiddleware = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
+const JWT_SECRET = process.env.JWT_SECRET || "secret";
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Nu ești autorizat" });
+export default function authMiddleware(req, res, next) {
+  // Acceptă token din:
+  //  - Authorization: Bearer <token>
+  //  - x-access-token (fallback, dacă vrei)
+  const authHeader = req.headers.authorization || "";
+  let token = null;
+
+  if (authHeader.startsWith("Bearer ")) {
+    token = authHeader.slice(7);
+  } else if (req.headers["x-access-token"]) {
+    token = req.headers["x-access-token"];
   }
 
-  const token = authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ error: "Lipsește tokenul de autentificare" });
+  }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    req.user = await User.findById(decoded.id).select("-password");
-    if (!req.user) {
-      return res.status(401).json({ error: "User invalid" });
-    }
-
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.userId = payload.id;
     next();
-  } catch (error) {
+  } catch (e) {
     return res.status(401).json({ error: "Token invalid sau expirat" });
   }
-};
-
-export default authMiddleware;
+}
