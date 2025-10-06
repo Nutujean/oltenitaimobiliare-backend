@@ -1,207 +1,169 @@
 // routes/authRoutes.js
 import express from "express";
-import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import User from "../models/User.js";
 import { sendEmail } from "../utils/sendEmail.js";
+import User from "../models/User.js";
 
 const router = express.Router();
 
-/* ------------------- REGISTER ------------------- */
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
+const FRONTEND =
+  process.env.FRONTEND_URL ||
+  process.env.CLIENT_ORIGIN ||
+  "https://oltenitaimobiliare.ro";
+const BACKEND = process.env.BACKEND_URL || "https://oltenitaimobiliare-backend.onrender.com";
+
+/** Helper: semnează token JWT */
+function signJwt(user) {
+  return jwt.sign(
+    { id: user._id, email: user.email, name: user.name },
+    JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+}
+
+/**
+ * POST /api/auth/register
+ * Body: { name, email, password }
+ */
 router.post("/register", async (req, res) => {
   try {
     const { name = "", email = "", password = "" } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: "Email și parolă obligatorii" });
+    if (!name.trim() || !email.trim() || !password)
+      return res.status(400).json({ error: "Completează nume, email și parolă" });
 
-    const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ error: "Email deja folosit" });
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      if (existing.verified === false) {
+        // utilizator neconfirmat – retrimitem mailul
+        existing.verificationToken = crypto.randomBytes(32).toString("hex");
+        existing.verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await existing.save();
+
+        const verifyUrl = `${BACKEND}/api/auth/verify?token=${existing.verificationToken}`;
+        await sendEmail({
+          to: email,
+          subject: "Confirmă-ți contul - Oltenița Imobiliare",
+          html: `<p>Bună, ${name}!</p>
+                 <p>Confirmă-ți contul apăsând pe link:</p>
+                 <p><a href="${verifyUrl}" target="_blank">${verifyUrl}</a></p>
+                 <p>Linkul expiră în 24h.</p>`,
+        });
+        return res.status(200).json({ ok: true, message: "Email de verificare retrimis." });
+      }
+      return res.status(400).json({ error: "Email deja folosit" });
+    }
 
     const hash = await bcrypt.hash(password, 10);
-    const verifyToken = crypto.randomBytes(32).toString("hex");
+    const token = crypto.randomBytes(32).toString("hex");
 
     const user = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
       password: hash,
-      isVerified: false,
-      verifyToken,
+      verified: false,
+      verificationToken: token,
+      verificationTokenExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
 
-    // trimitem email de verificare
-    const verifyLink = `${process.env.FRONTEND_URL}/verifica-email?token=${verifyToken}`;
-    await sendEmail(
-      user.email,
-      "Confirmă-ți adresa de email",
-      `
-      <p>Bună ${user.name || ""},</p>
-      <p>Te rugăm să-ți confirmi adresa de email pentru Oltenița Imobiliare:</p>
-      <p><a href="${verifyLink}" target="_blank" style="background:#16a34a;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Confirmă emailul</a></p>
-      <p>Sau accesează: ${verifyLink}</p>
-      `
-    );
+    const verifyUrl = `${BACKEND}/api/auth/verify?token=${token}`;
+    await sendEmail({
+      to: user.email,
+      subject: "Confirmă-ți contul - Oltenița Imobiliare",
+      html: `<p>Bună, ${user.name}!</p>
+             <p>Apasă pentru a-ți confirma contul:</p>
+             <p><a href="${verifyUrl}" target="_blank">${verifyUrl}</a></p>
+             <p>Linkul expiră în 24h.</p>`,
+    });
 
-    res.json({ ok: true });
+    res.json({ ok: true, message: "Cont creat. Verifică emailul pentru activare." });
   } catch (e) {
     console.error("register error:", e);
-    res.status(500).json({ error: "Eroare la înregistrare" });
+    res.status(500).json({ error: "Eroare internă la înregistrare" });
   }
 });
 
-/* ------------------- VERIFY EMAIL ------------------- */
-router.post("/verify", async (req, res) => {
+/**
+ * GET /api/auth/verify?token=...
+ * Activează contul
+ */
+router.get("/verify", async (req, res) => {
   try {
-    const { token } = req.body || {};
-    if (!token) return res.status(400).json({ error: "Token lipsă" });
+    const { token } = req.query;
+    if (!token) return res.status(400).send("Token lipsă");
 
-    const user = await User.findOne({ verifyToken: token });
-    if (!user) return res.status(400).json({ error: "Token invalid" });
+    const user = await User.findOne({
+      verificationToken: token,
+      verificationTokenExpires: { $gt: new Date() },
+    });
+    if (!user) return res.status(400).send("Token invalid sau expirat");
 
-    user.isVerified = true;
-    user.verifyToken = undefined;
+    user.verified = true;
+    user.verificationToken = undefined;
+    user.verificationTokenExpires = undefined;
     await user.save();
 
-    res.json({ ok: true });
+    // redirecționăm spre login cu mesaj
+    return res.redirect(`${FRONTEND}/login?verified=1`);
   } catch (e) {
     console.error("verify error:", e);
-    res.status(500).json({ error: "Eroare la verificare" });
+    res.status(500).send("Eroare la verificare");
   }
 });
 
-/* ------------------- RESEND VERIFY ------------------- */
-router.post("/resend-verification", async (req, res) => {
-  try {
-    const { email } = req.body || {};
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ error: "Nu există cont cu acest email" });
-    if (user.isVerified) return res.status(400).json({ error: "Cont deja verificat" });
-
-    user.verifyToken = crypto.randomBytes(32).toString("hex");
-    await user.save();
-
-    const verifyLink = `${process.env.FRONTEND_URL}/verifica-email?token=${user.verifyToken}`;
-    await sendEmail(
-      user.email,
-      "Re-trimitem confirmarea adresei de email",
-      `
-      <p>Bună ${user.name || ""},</p>
-      <p>Accesează linkul pentru a confirma adresa de email:</p>
-      <p><a href="${verifyLink}" target="_blank" style="background:#2563eb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Confirmă emailul</a></p>
-      <p>Sau: ${verifyLink}</p>
-      `
-    );
-
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("resend error:", e);
-    res.status(500).json({ error: "Eroare la retrimitere email" });
-  }
-});
-
-/* ------------------- LOGIN ------------------- */
+/**
+ * POST /api/auth/login
+ * Body: { email, password }
+ */
 router.post("/login", async (req, res) => {
   try {
     const { email = "", password = "" } = req.body || {};
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ error: "Email sau parolă greșite" });
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(400).json({ error: "Email sau parolă incorecte" });
 
-    const ok = await bcrypt.compare(password, user.password || "");
-    if (!ok) return res.status(400).json({ error: "Email sau parolă greșite" });
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.status(400).json({ error: "Email sau parolă incorecte" });
 
-    // Poți forța verificarea emailului înainte de login dacă vrei
-    // if (!user.isVerified) return res.status(403).json({ error: "Confirmă-ți adresa de email" });
+    if (user.verified === false) {
+      return res.status(403).json({ error: "Cont neconfirmat. Verifică emailul." });
+    }
 
-    const token = jwt.sign({ uid: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    const token = signJwt(user);
     res.json({
       token,
-      user: { id: user._id, name: user.name, email: user.email, isVerified: user.isVerified, createdAt: user.createdAt }
+      user: {
+        _id: user._id,
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
     });
   } catch (e) {
     console.error("login error:", e);
-    res.status(500).json({ error: "Eroare la autentificare" });
+    res.status(500).json({ error: "Eroare internă la autentificare" });
   }
 });
 
-/* ------------------- FORGOT PASSWORD ------------------- */
-router.post("/forgot-password", async (req, res) => {
+/**
+ * POST /api/auth/test-email  (opțional pentru test)
+ * Body: { to }
+ */
+router.post("/test-email", async (req, res) => {
   try {
-    const { email = "" } = req.body || {};
-    if (!email) return res.status(400).json({ error: "Email obligatoriu" });
-
-    const user = await User.findOne({ email });
-    // răspuns generic, fără a divulga existența contului
-    if (!user) return res.json({ ok: true });
-
-    const token = crypto.randomBytes(32).toString("hex");
-    user.resetPasswordToken = token;
-    user.resetPasswordExpires = new Date(Date.now() + 1000 * 60 * 60); // 1 oră
-    await user.save();
-
-    const resetLink = `${process.env.FRONTEND_URL}/resetare-parola?token=${token}`;
-
-    await sendEmail(
-      user.email,
-      "Resetează-ți parola",
-      `
-      <p>Bună ${user.name || ""},</p>
-      <p>Ai solicitat resetarea parolei pentru Oltenița Imobiliare.</p>
-      <p><a href="${resetLink}" target="_blank" style="background:#111827;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Resetează parola</a></p>
-      <p>Linkul expiră în 1 oră. Dacă nu ai solicitat tu, ignoră acest email.</p>
-      <p>Sau: ${resetLink}</p>
-      `
-    );
-
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("forgot-password error:", e);
-    res.status(500).json({ error: "Eroare la trimiterea emailului de resetare" });
-  }
-});
-
-/* ------------------- CHECK RESET TOKEN (opțional UX) ------------------- */
-router.get("/check-reset-token", async (req, res) => {
-  try {
-    const { token = "" } = req.query || {};
-    if (!token) return res.status(400).json({ error: "Token lipsă" });
-
-    const user = await User.findOne({
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: new Date() },
+    const to = req.body?.to;
+    if (!to) return res.status(400).json({ error: "Lipsește 'to'" });
+    await sendEmail({
+      to,
+      subject: "Test email - Oltenița Imobiliare",
+      html: "<p>Funcționează ✅</p>",
     });
-
-    if (!user) return res.status(400).json({ error: "Token invalid sau expirat" });
     res.json({ ok: true });
   } catch (e) {
-    console.error("check-reset-token error:", e);
-    res.status(500).json({ error: "Eroare verificare token" });
-  }
-});
-
-/* ------------------- RESET PASSWORD ------------------- */
-router.post("/reset-password", async (req, res) => {
-  try {
-    const { token = "", password = "" } = req.body || {};
-    if (!token || !password) return res.status(400).json({ error: "Date incomplete" });
-
-    const user = await User.findOne({
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: new Date() },
-    });
-    if (!user) return res.status(400).json({ error: "Token invalid sau expirat" });
-
-    const hash = await bcrypt.hash(password, 10);
-    user.password = hash;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-
-    // dacă vrei, consideră contul verificat după schimbarea parolei
-    // user.isVerified = true;
-
-    await user.save();
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("reset-password error:", e);
-    res.status(500).json({ error: "Eroare la resetarea parolei" });
+    console.error("test-email error:", e);
+    res.status(500).json({ error: e.message || "Eroare test email" });
   }
 });
 
