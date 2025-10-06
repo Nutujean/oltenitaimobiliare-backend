@@ -1,28 +1,28 @@
+// models/User.js
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
   {
-    name: {
-      type: String,
-      required: [true, "Numele este obligatoriu"],
-      trim: true,
-    },
+    name: { type: String, trim: true },
     email: {
       type: String,
-      required: [true, "Email-ul este obligatoriu"],
+      required: true,
       unique: true,
       lowercase: true,
-      match: [/^\S+@\S+\.\S+$/, "Email invalid"],
+      trim: true,
     },
-    password: {
-      type: String,
-      required: [true, "Parola este obligatorie"],
-      minlength: [6, "Parola trebuie să aibă minim 6 caractere"],
-    },
+    password: { type: String, required: true },
+
+    // ✅ verificare email
+    verified: { type: Boolean, default: false },
+    verificationToken: { type: String },
+    verificationTokenExpiresAt: { type: Date },
   },
   { timestamps: true }
 );
 
-const User = mongoose.model("User", userSchema);
+// index pentru email (unic)
+userSchema.index({ email: 1 }, { unique: true });
 
+const User = mongoose.model("User", userSchema);
 export default User;
