@@ -9,7 +9,7 @@ const {
   MAIL_FROM,
 } = process.env;
 
-// Transport prin Brevo (sau alt SMTP) pe 587 cu STARTTLS
+// Transport prin Brevo (SMTP pe 587 cu STARTTLS)
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST || "smtp-relay.brevo.com",
   port: Number(SMTP_PORT || 587),
