@@ -6,6 +6,10 @@ import auth from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 const { Types } = mongoose;
+const toNum = (v) =>
+  v === "" || v === null || v === undefined || Number.isNaN(Number(v))
+    ? undefined
+    : Number(v);
 
 // GET /api/listings (cu filtre & sort)
 router.get("/", async (req, res) => {
@@ -71,11 +75,19 @@ router.get("/:id", async (req, res) => {
 // POST /api/listings — creează (trebuie token)
 router.post("/", auth, async (req, res) => {
   try {
-    const payload = req.body || {};
+    const payload = { ...(req.body || {}) };
     payload.user = req.userId;
+
+    // normalizează imagini
     if (payload.images && !Array.isArray(payload.images)) {
       payload.images = [payload.images].filter(Boolean);
     }
+
+    // ➕ normalizează câmpurile noi ca numere
+    payload.floor = toNum(payload.floor);
+    payload.surface = toNum(payload.surface);
+    payload.rooms = toNum(payload.rooms);
+
     const created = await Listing.create(payload);
     res.status(201).json(created);
   } catch (e) {
@@ -96,10 +108,18 @@ router.put("/:id", auth, async (req, res) => {
     if (String(listing.user) !== String(req.userId)) {
       return res.status(403).json({ error: "Nu ești proprietarul anunțului" });
     }
-    const update = req.body || {};
+
+    const update = { ...(req.body || {}) };
+
     if (update.images && !Array.isArray(update.images)) {
       update.images = [update.images].filter(Boolean);
     }
+
+    // ➕ normalizează câmpurile noi ca numere
+    if ("floor" in update) update.floor = toNum(update.floor);
+    if ("surface" in update) update.surface = toNum(update.surface);
+    if ("rooms" in update) update.rooms = toNum(update.rooms);
+
     const updated = await Listing.findByIdAndUpdate(id, update, { new: true });
     res.json(updated);
   } catch (e) {
