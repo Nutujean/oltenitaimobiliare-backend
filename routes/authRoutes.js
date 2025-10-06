@@ -9,7 +9,15 @@ import { sendEmail } from "../utils/sendEmail.js";
 const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "secret";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+// ✅ Fallback-uri SIGURE (niciodată localhost)
+const FRONTEND_URL =
+  process.env.FRONTEND_URL ||
+  process.env.CLIENT_ORIGIN ||
+  "https://oltenitaimobiliare.ro";
+const BACKEND_URL =
+  process.env.BACKEND_URL ||
+  "https://oltenitaimobiliare-backend.onrender.com";
 
 /** Generează token de verificare valabil 24h */
 function newVerificationToken() {
@@ -35,11 +43,44 @@ router.post("/register", async (req, res) => {
 
     const existing = await User.findOne({ email: email.toLowerCase() });
     if (existing) {
-      return res
-        .status(400)
-        .json({ error: "Există deja un cont cu acest email" });
+      // ✔️ Dacă există, dar NU e verificat: regenerează token + retrimite emailul
+      if (!existing.verified) {
+        const hashed = await bcrypt.hash(password, 10);
+        const { token, expires } = newVerificationToken();
+
+        existing.name = name || existing.name;
+        existing.password = hashed;
+        existing.verificationToken = token;
+        existing.verificationTokenExpiresAt = expires;
+        await existing.save();
+
+        const verifyLink = `${FRONTEND_URL}/verifica-email?token=${token}`;
+        const apiFallback = `${BACKEND_URL}/api/auth/verify-email?token=${token}`;
+
+        await sendEmail({
+          to: existing.email,
+          subject: "Confirmă-ți emailul — Oltenița Imobiliare",
+          html: `
+            <p>Salut${existing.name ? " " + existing.name : ""},</p>
+            <p>Apasă pentru a-ți activa contul:</p>
+            <p><a href="${verifyLink}" target="_blank">Confirmă adresa de email</a></p>
+            <p style="font-size:12px;color:#666">
+              Dacă linkul de mai sus nu funcționează, folosește varianta de rezervă:<br/>
+              <a href="${apiFallback}" target="_blank">${apiFallback}</a>
+            </p>
+          `,
+        });
+
+        return res.status(200).json({
+          ok: true,
+          message:
+            "Cont existent neconfirmat — ți-am retrimis emailul de verificare.",
+        });
+      }
+      return res.status(400).json({ error: "Există deja un cont cu acest email" });
     }
 
+    // ✔️ User nou
     const hashed = await bcrypt.hash(password, 10);
     const { token, expires } = newVerificationToken();
 
@@ -53,6 +94,7 @@ router.post("/register", async (req, res) => {
     });
 
     const verifyLink = `${FRONTEND_URL}/verifica-email?token=${token}`;
+    const apiFallback = `${BACKEND_URL}/api/auth/verify-email?token=${token}`;
 
     await sendEmail({
       to: user.email,
@@ -60,7 +102,11 @@ router.post("/register", async (req, res) => {
       html: `
         <p>Bună${user.name ? " " + user.name : ""},</p>
         <p>Te rugăm să-ți activezi contul apăsând pe linkul de mai jos:</p>
-        <p><a href="${verifyLink}" target="_blank">${verifyLink}</a></p>
+        <p><a href="${verifyLink}" target="_blank">Confirmă adresa de email</a></p>
+        <p style="font-size:12px;color:#666">
+          Dacă linkul de mai sus nu funcționează, folosește varianta de rezervă:<br/>
+          <a href="${apiFallback}" target="_blank">${apiFallback}</a>
+        </p>
         <p>Linkul este valabil 24 de ore.</p>
       `,
     });
@@ -69,7 +115,6 @@ router.post("/register", async (req, res) => {
       .status(201)
       .json({ ok: true, message: "Cont creat. Verifică emailul pentru activare." });
   } catch (e) {
-    // duplicate key
     if (e?.code === 11000) {
       return res
         .status(400)
@@ -157,6 +202,7 @@ router.post("/resend-verification", async (req, res) => {
     await user.save();
 
     const verifyLink = `${FRONTEND_URL}/verifica-email?token=${token}`;
+    const apiFallback = `${BACKEND_URL}/api/auth/verify-email?token=${token}`;
 
     await sendEmail({
       to: user.email,
@@ -164,7 +210,11 @@ router.post("/resend-verification", async (req, res) => {
       html: `
         <p>Salut${user.name ? " " + user.name : ""},</p>
         <p>Apasă pe link pentru a-ți activa contul:</p>
-        <p><a href="${verifyLink}" target="_blank">${verifyLink}</a></p>
+        <p><a href="${verifyLink}" target="_blank">Confirmă adresa de email</a></p>
+        <p style="font-size:12px;color:#666">
+          Dacă linkul de mai sus nu funcționează, folosește varianta de rezervă:<br/>
+          <a href="${apiFallback}" target="_blank">${apiFallback}</a>
+        </p>
         <p>Linkul este valabil 24 de ore.</p>
       `,
     });
@@ -210,9 +260,6 @@ router.post("/login", async (req, res) => {
 });
 
 /* =============== TEST: TRIMITE UN EMAIL SIMPLU ============== */
-/** Folosește pentru diagnostic:
- *  POST /api/auth/test-email  { "to": "adresa@exemplu.com" }
- */
 router.post("/test-email", async (req, res) => {
   try {
     const { to = "" } = req.body;
@@ -221,7 +268,7 @@ router.post("/test-email", async (req, res) => {
     await sendEmail({
       to,
       subject: "Test — Oltenița Imobiliare",
-      html: "<p>Salut! Acesta este un email de test trimis prin SMTP.</p>",
+      html: "<p>Salut! Acesta este un email de test trimis prin API.</p>",
     });
 
     res.json({ ok: true });
