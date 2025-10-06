@@ -5,16 +5,17 @@ import User from "../models/User.js";
 
 const router = express.Router();
 
-/**
- * GET /api/users/me
- * Profilul utilizatorului autentificat
- */
+/** GET /api/users/me  (Authorization: Bearer <token>) */
 router.get("/me", auth, async (req, res) => {
   try {
     const id = req.user?.id || req.user?._id;
-    const user = await User.findById(id)
-      .select("-password -verificationToken -verificationTokenExpires -__v");
+    if (!id) return res.status(401).json({ error: "Neautorizat" });
+
+    const user = await User.findById(id).select(
+      "-password -verificationToken -verificationTokenExpires -__v"
+    );
     if (!user) return res.status(404).json({ error: "Utilizator inexistent" });
+
     res.json(user);
   } catch (e) {
     console.error("GET /users/me error:", e);
