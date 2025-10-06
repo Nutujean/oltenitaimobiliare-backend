@@ -7,13 +7,13 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      unique: true,
+      unique: true,   // <- păstrăm unicitatea aici
       lowercase: true,
       trim: true,
     },
     password: { type: String, required: true },
 
-    // ✅ verificare email
+    // verificare email
     verified: { type: Boolean, default: false },
     verificationToken: { type: String },
     verificationTokenExpiresAt: { type: Date },
@@ -21,8 +21,7 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// index pentru email (unic)
-userSchema.index({ email: 1 }, { unique: true });
+// ❌ NU mai adăugăm încă o dată indexul pentru email ca schema.index(...)
 
 const User = mongoose.model("User", userSchema);
 export default User;
