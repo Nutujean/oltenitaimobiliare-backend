@@ -8,29 +8,43 @@ import mongoose from "mongoose";
 import authRoutes from "./routes/authRoutes.js";
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
-// ✅ nou: STRIPE
+// ✅ Stripe
 import stripeRoutes from "./routes/stripeRoutes.js";
 
 dotenv.config();
 
 const app = express();
 
-/* ---------- CORS deschis (elimină preflight fail) ---------- */
+/* ---------------- CORS SUPER-LAX (până terminăm integrarea) ---------------- */
+// 1) mic fallback ca să aibă CORS chiar și pe erori/404
+app.use((req, res, next) => {
+  const origin = req.headers.origin || "*";
+  res.header("Access-Control-Allow-Origin", origin);
+  res.header("Vary", "Origin");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
+// 2) middleware-ul standard cors, după fallback (nu strică, ajută)
 app.use(
   cors({
-    origin: (origin, cb) => cb(null, true), // permite orice origin (prod + localhost)
+    origin: (_origin, cb) => cb(null, true), // acceptă orice origin
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: false,
   })
 );
-app.options("*", cors()); // preflight global
 
-/* ---------- Parsere ---------- */
+/* ---------------- Parsere ---------------- */
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-/* ---------- DB ---------- */
+/* ---------------- DB ---------------- */
 const MONGODB_URI =
   process.env.MONGODB_URI ||
   process.env.MONGO_URI ||
@@ -45,21 +59,21 @@ mongoose
     process.exit(1);
   });
 
-/* ---------- Health ---------- */
+/* ---------------- Health ---------------- */
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-/* ---------- RUTE API ---------- */
+/* ---------------- Rute API ---------------- */
 app.use("/api/auth", authRoutes);
 app.use("/api/listings", listingsRoutes);
 app.use("/api/users", usersRoutes);
 
-// ✅ MONTEAZĂ STRIPE AICI
+// ✅ montează Stripe DUPĂ CORS
 app.use("/api/stripe", stripeRoutes);
 console.log("✔ Stripe routes mounted at /api/stripe");
 
-/* ---------- 404 API ---------- */
+/* ---------------- 404 API ---------------- */
 app.use((req, res) => {
   if (req.path.startsWith("/api/")) {
     return res.status(404).json({ error: "Ruta API inexistentă" });
@@ -67,7 +81,7 @@ app.use((req, res) => {
   res.status(404).send("Not found");
 });
 
-/* ---------- Start ---------- */
+/* ---------------- Start ---------------- */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server pornit pe portul ${PORT}`);

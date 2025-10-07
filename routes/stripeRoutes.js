@@ -11,7 +11,7 @@ const FRONTEND =
   process.env.CLIENT_ORIGIN ||
   "https://oltenitaimobiliare.ro";
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || ""; // sk_test_...
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || ""; // trebuie sk_test_...
 const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
   : null;
@@ -21,21 +21,22 @@ const PLANS = {
   featured30: { label: "Promovare anunț – 30 zile", amountEUR: 15 },
 };
 
-function getIdFromSlug(slugOrId = "") {
+const getIdFromSlug = (slugOrId = "") => {
   const s = String(slugOrId);
   return s.includes("-") ? s.split("-").pop() : s;
-}
+};
 
-// ping + debug (pt. verificare rapidă)
+// ✅ endpoints de verificare rapidă
 router.get("/ping", (_req, res) => res.json({ ok: true }));
-router.get("/debug", (_req, res) => {
+router.get("/debug", (_req, res) =>
   res.json({
     hasKey: Boolean(STRIPE_SECRET_KEY),
     keyPrefix: STRIPE_SECRET_KEY ? STRIPE_SECRET_KEY.slice(0, 7) : null, // "sk_test"
     frontend: FRONTEND,
-  });
-});
+  })
+);
 
+// ✅ create checkout session
 router.post("/create-checkout-session", async (req, res) => {
   try {
     if (!stripe) {
