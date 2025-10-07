@@ -1,6 +1,5 @@
 // models/Listing.js
 import mongoose from "mongoose";
-featuredUntil: { type: Date, default: null },
 
 const { Schema } = mongoose;
 
@@ -11,12 +10,12 @@ const ListingSchema = new Schema(
     price: { type: Number, min: 0 },
 
     // categorizare & locație
-    category: { type: String, trim: true }, // ex: Apartamente, Garsoniere, Case, Terenuri, etc.
-    location: { type: String, trim: true }, // ex: Oltenita, Chirnogi, etc.
+    category: { type: String, trim: true },
+    location: { type: String, trim: true },
 
     // imagini
     images: { type: [String], default: [] },
-    imageUrl: { type: String, default: "" }, // fallback vechi
+    imageUrl: { type: String, default: "" },
 
     // contact
     phone: { type: String, trim: true },
@@ -29,19 +28,22 @@ const ListingSchema = new Schema(
     user: { type: Schema.Types.ObjectId, ref: "User" },
 
     // 🔹 câmpuri noi
-    floor: { type: Number, min: 0, max: 50 },     // Etaj (0=Parter)
-    surface: { type: Number, min: 0 },            // Suprafață utilă (mp)
-    rooms: { type: Number, min: 1, max: 10 },     // Număr camere
+    floor: { type: Number, min: 0, max: 50 },
+    surface: { type: Number, min: 0 },
+    rooms: { type: Number, min: 1, max: 10 },
 
-    // 🔹 tip ofertă: vânzare / închiriere
+    // 🔹 tip ofertă
     dealType: {
       type: String,
       enum: ["vanzare", "inchiriere"],
       default: "vanzare",
     },
 
+    // 🔹 câmp nou pentru promovare
+    featuredUntil: { type: Date, default: null },
+
     // opționale moștenite
-    userEmail: { type: String, trim: true }, // dacă ai folosit în trecut
+    userEmail: { type: String, trim: true },
   },
   { timestamps: true }
 );
