@@ -18,6 +18,7 @@ const stripe = STRIPE_SECRET_KEY
 
 const PLANS = {
   featured7:  { label: "Promovare anunț – 7 zile",  amountEUR: 5 },
+  featured14: { label: "Promovare anunț – 14 zile", amountEUR: 9 },
   featured30: { label: "Promovare anunț – 30 zile", amountEUR: 15 },
 };
 
