@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
+mongoose.set("autoIndex", process.env.NODE_ENV !== "production");
 
 // rute existente
 import authRoutes from "./routes/authRoutes.js";
