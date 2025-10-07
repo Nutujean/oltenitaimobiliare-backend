@@ -5,124 +5,169 @@ import Listing from "../models/Listing.js";
 import auth from "../middleware/authMiddleware.js";
 
 const router = express.Router();
-const { Types } = mongoose;
 
-const toNum = (v) =>
-  v === "" || v === null || v === undefined || Number.isNaN(Number(v))
-    ? undefined
-    : Number(v);
+/* Utils */
+function parseObjectIdFromSlug(slugOrId = "") {
+  const maybeId = String(slugOrId).includes("-")
+    ? String(slugOrId).split("-").pop()
+    : String(slugOrId);
+  return maybeId;
+}
 
-const normalizeDealType = (v) => {
-  if (!v) return undefined;
-  const x = String(v).toLowerCase();
-  return x === "inchiriere" ? "inchiriere" : x === "vanzare" ? "vanzare" : undefined;
-};
+function buildFilters({ q, category, location, userId }) {
+  const filter = {};
+  if (q && q.trim()) {
+    const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    filter.$or = [{ title: rx }, { description: rx }, { location: rx }, { category: rx }];
+  }
+  if (category && category.trim()) filter.category = category.trim();
+  if (location && location.trim()) filter.location = location.trim();
+  if (userId) filter.user = userId;
+  return filter;
+}
 
-// GET /api/listings (cu filtre, inclusiv avansate) --------------------------
+function buildSort(sort = "latest") {
+  switch (sort) {
+    case "oldest":
+      return { createdAt: 1 };
+    case "price_asc":
+      return { price: 1, createdAt: -1 };
+    case "price_desc":
+      return { price: -1, createdAt: -1 };
+    // implicit: cele mai noi primele
+    default:
+      return { createdAt: -1 };
+  }
+}
+
+/* ----------------------------------------------------------------------------
+ * GET /api/listings
+ *  - filtre: ?q=...&category=...&location=...&sort=latest|oldest|price_asc|price_desc
+ * ---------------------------------------------------------------------------*/
 router.get("/", async (req, res) => {
   try {
-    const {
-      q = "",
-      category = "",
-      location = "",
-      sort = "latest",
-      dealType = "",
-      roomsMin = "",
-      surfaceMin = "",
-      priceMin = "",
-      priceMax = "",
-    } = req.query;
+    const { q = "", category = "", location = "", sort = "latest", limit = 60 } = req.query;
+    const filter = buildFilters({ q, category, location });
+    const sortBy = buildSort(sort);
 
-    const filter = {};
+    const items = await Listing.find(filter)
+      .sort(sortBy)
+      .limit(Math.min(Number(limit) || 60, 200))
+      .select("-__v")
+      .lean();
 
-    // căutare liberă
-    if (q) {
-      filter.$or = [
-        { title: { $regex: q, $options: "i" } },
-        { description: { $regex: q, $options: "i" } },
-        { location: { $regex: q, $options: "i" } },
-      ];
-    }
-
-    if (category) filter.category = category;
-    if (location) filter.location = location;
-
-    const dt = normalizeDealType(dealType);
-    if (dt) filter.dealType = dt;
-
-    // filtre numerice
-    const rMin = toNum(roomsMin);
-    if (rMin !== undefined) filter.rooms = { ...(filter.rooms || {}), $gte: rMin };
-
-    const sMin = toNum(surfaceMin);
-    if (sMin !== undefined) filter.surface = { ...(filter.surface || {}), $gte: sMin };
-
-    const pMin = toNum(priceMin);
-    if (pMin !== undefined) filter.price = { ...(filter.price || {}), $gte: pMin };
-
-    const pMax = toNum(priceMax);
-    if (pMax !== undefined) filter.price = { ...(filter.price || {}), $lte: pMax };
-
-    const sortMap = {
-      latest: { createdAt: -1 },
-      oldest: { createdAt: 1 },
-      price_asc: { price: 1 },
-      price_desc: { price: -1 },
-    };
-    const sortSpec = sortMap[sort] || sortMap.latest;
-
-    const listings = await Listing.find(filter).sort(sortSpec).lean();
-    res.json(listings);
+    res.json(items);
   } catch (e) {
     console.error("Eroare GET /listings:", e);
     res.status(500).json({ error: "Eroare la preluarea anunțurilor" });
   }
 });
 
-// GET /api/listings/me ------------------------------------------------------
+/* ----------------------------------------------------------------------------
+ * GET /api/listings/me  (necesită login) – anunțurile utilizatorului curent
+ * ---------------------------------------------------------------------------*/
 router.get("/me", auth, async (req, res) => {
   try {
-    const listings = await Listing.find({ user: req.userId })
+    const userId = req.user?.id || req.user?._id;
+    if (!userId) return res.status(401).json({ error: "Neautorizat" });
+
+    const items = await Listing.find({ user: userId })
       .sort({ createdAt: -1 })
+      .select("-__v")
       .lean();
-    res.json(listings);
+
+    res.json(items);
   } catch (e) {
     console.error("Eroare GET /listings/me:", e);
     res.status(500).json({ error: "Eroare la preluarea anunțurilor mele" });
   }
 });
 
-// GET /api/listings/:id -----------------------------------------------------
+/* ----------------------------------------------------------------------------
+ * GET /api/listings/:id (acceptă și slug-uri de forma titlu-...-<id>)
+ *  - populate user (_id, name, email, phone)
+ * ---------------------------------------------------------------------------*/
 router.get("/:id", async (req, res) => {
   try {
-    const { id } = req.params;
-    if (!Types.ObjectId.isValid(id)) {
+    const raw = parseObjectIdFromSlug(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(raw)) {
       return res.status(400).json({ error: "ID invalid" });
     }
-    const listing = await Listing.findById(id);
-    if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
-    res.json(listing);
+
+    const doc = await Listing.findById(raw)
+      .populate("user", "_id name email phone")
+      .select("-__v")
+      .lean();
+
+    if (!doc) return res.status(404).json({ error: "Anunț inexistent" });
+    res.json(doc);
   } catch (e) {
     console.error("Eroare GET /listings/:id:", e);
     res.status(500).json({ error: "Eroare la preluarea anunțului" });
   }
 });
 
-// POST /api/listings --------------------------------------------------------
+/* ----------------------------------------------------------------------------
+ * POST /api/listings  (create) – necesită login
+ * Body câmpuri acceptate:
+ *  title, description, price, category, location, images (array), imageUrl (string),
+ *  phone, status ("vanzare"|"inchiriere"), floor (etaj), surface (mp), rooms (camere),
+ *  rezervat (bool)
+ *  – max 15 imagini
+ * ---------------------------------------------------------------------------*/
 router.post("/", auth, async (req, res) => {
   try {
-    const payload = { ...(req.body || {}) };
-    payload.user = req.userId;
+    const userId = req.user?.id || req.user?._id;
+    if (!userId) return res.status(401).json({ error: "Neautorizat" });
 
-    if (payload.images && !Array.isArray(payload.images)) {
-      payload.images = [payload.images].filter(Boolean);
+    const {
+      title = "",
+      description = "",
+      price,
+      category = "",
+      location = "",
+      images = [],
+      imageUrl = "",
+      phone = "",
+      status = "vanzare", // "vanzare" | "inchiriere"
+      floor, // etaj
+      surface, // suprafata
+      rooms, // camere
+      rezervat = false,
+    } = req.body || {};
+
+    if (!title.trim() || !description.trim() || !category.trim() || !location.trim()) {
+      return res.status(400).json({ error: "Titlu, descriere, categorie și locație sunt obligatorii" });
     }
 
-    payload.price = payload.price !== undefined ? toNum(payload.price) : undefined;
-    payload.floor = toNum(payload.floor);
-    payload.surface = toNum(payload.surface);
-    payload.rooms = toNum(payload.rooms);
-    payload.dealType = normalizeDealType(payload.dealType) || "vanzare";
+    let priceNum = Number.parseFloat(price);
+    if (Number.isNaN(priceNum)) {
+      return res.status(400).json({ error: "Preț invalid" });
+    }
+
+    // normalizează imagini – max 15
+    let imgs = Array.isArray(images) ? images.filter(Boolean) : [];
+    if (imageUrl && !imgs.includes(imageUrl)) imgs.unshift(imageUrl);
+    imgs = imgs.slice(0, 15);
+
+    const payload = {
+      title: title.trim(),
+      description: description.trim(),
+      price: priceNum,
+      category: category.trim(),
+      location: location.trim(),
+      images: imgs,
+      imageUrl: imgs[0] || "",
+      phone: phone.trim(),
+      status: ["vanzare", "inchiriere"].includes(String(status).toLowerCase())
+        ? String(status).toLowerCase()
+        : "vanzare",
+      floor: floor ?? null,
+      surface: surface ?? null,
+      rooms: rooms ?? null,
+      rezervat: Boolean(rezervat),
+      user: userId,
+    };
 
     const created = await Listing.create(payload);
     res.status(201).json(created);
@@ -132,32 +177,70 @@ router.post("/", auth, async (req, res) => {
   }
 });
 
-// PUT /api/listings/:id -----------------------------------------------------
+/* ----------------------------------------------------------------------------
+ * PUT /api/listings/:id  (update) – necesită login + proprietar
+ *  – aplică aceleași validări ca la POST; max 15 imagini
+ * ---------------------------------------------------------------------------*/
 router.put("/:id", auth, async (req, res) => {
   try {
-    const { id } = req.params;
-    if (!Types.ObjectId.isValid(id)) {
+    const userId = req.user?.id || req.user?._id;
+    const raw = parseObjectIdFromSlug(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(raw)) {
       return res.status(400).json({ error: "ID invalid" });
     }
-    const listing = await Listing.findById(id);
-    if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
-    if (String(listing.user) !== String(req.userId)) {
-      return res.status(403).json({ error: "Nu ești proprietarul anunțului" });
+
+    const existing = await Listing.findById(raw);
+    if (!existing) return res.status(404).json({ error: "Anunț inexistent" });
+    if (String(existing.user) !== String(userId)) {
+      return res.status(403).json({ error: "Nu ai dreptul să modifici acest anunț" });
     }
 
-    const update = { ...(req.body || {}) };
+    const allow = [
+      "title",
+      "description",
+      "price",
+      "category",
+      "location",
+      "images",
+      "imageUrl",
+      "phone",
+      "status",
+      "floor",
+      "surface",
+      "rooms",
+      "rezervat",
+      "featuredUntil",
+    ];
 
-    if (update.images && !Array.isArray(update.images)) {
-      update.images = [update.images].filter(Boolean);
+    const patch = {};
+    for (const k of allow) {
+      if (req.body.hasOwnProperty(k)) patch[k] = req.body[k];
     }
 
-    if ("price" in update) update.price = toNum(update.price);
-    if ("floor" in update) update.floor = toNum(update.floor);
-    if ("surface" in update) update.surface = toNum(update.surface);
-    if ("rooms" in update) update.rooms = toNum(update.rooms);
-    if ("dealType" in update) update.dealType = normalizeDealType(update.dealType) || "vanzare";
+    if (patch.price !== undefined) {
+      const p = Number.parseFloat(patch.price);
+      if (Number.isNaN(p)) return res.status(400).json({ error: "Preț invalid" });
+      patch.price = p;
+    }
 
-    const updated = await Listing.findByIdAndUpdate(id, update, { new: true });
+    if (patch.images) {
+      let imgs = Array.isArray(patch.images) ? patch.images.filter(Boolean) : [];
+      if (patch.imageUrl && !imgs.includes(patch.imageUrl)) imgs.unshift(patch.imageUrl);
+      patch.images = imgs.slice(0, 15);
+      patch.imageUrl = patch.images[0] || existing.imageUrl || "";
+    }
+
+    if (patch.title) patch.title = String(patch.title).trim();
+    if (patch.description) patch.description = String(patch.description).trim();
+    if (patch.category) patch.category = String(patch.category).trim();
+    if (patch.location) patch.location = String(patch.location).trim();
+    if (patch.phone) patch.phone = String(patch.phone).trim();
+    if (patch.status) {
+      const st = String(patch.status).toLowerCase();
+      patch.status = ["vanzare", "inchiriere"].includes(st) ? st : existing.status;
+    }
+
+    const updated = await Listing.findByIdAndUpdate(existing._id, patch, { new: true }).lean();
     res.json(updated);
   } catch (e) {
     console.error("Eroare PUT /listings/:id:", e);
@@ -165,19 +248,24 @@ router.put("/:id", auth, async (req, res) => {
   }
 });
 
-// DELETE /api/listings/:id --------------------------------------------------
+/* ----------------------------------------------------------------------------
+ * DELETE /api/listings/:id – necesită login + proprietar
+ * ---------------------------------------------------------------------------*/
 router.delete("/:id", auth, async (req, res) => {
   try {
-    const { id } = req.params;
-    if (!Types.ObjectId.isValid(id)) {
+    const userId = req.user?.id || req.user?._id;
+    const raw = parseObjectIdFromSlug(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(raw)) {
       return res.status(400).json({ error: "ID invalid" });
     }
-    const listing = await Listing.findById(id);
-    if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
-    if (String(listing.user) !== String(req.userId)) {
-      return res.status(403).json({ error: "Nu ești proprietarul anunțului" });
+
+    const existing = await Listing.findById(raw);
+    if (!existing) return res.status(404).json({ error: "Anunț inexistent" });
+    if (String(existing.user) !== String(userId)) {
+      return res.status(403).json({ error: "Nu ai dreptul să ștergi acest anunț" });
     }
-    await Listing.deleteOne({ _id: id });
+
+    await Listing.findByIdAndDelete(raw);
     res.json({ ok: true });
   } catch (e) {
     console.error("Eroare DELETE /listings/:id:", e);
