@@ -1,5 +1,6 @@
 // models/Listing.js
 import mongoose from "mongoose";
+featuredUntil: { type: Date, default: null },
 
 const { Schema } = mongoose;
 

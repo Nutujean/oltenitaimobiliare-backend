@@ -86,5 +86,56 @@ router.post("/create-checkout-session", async (req, res) => {
     res.status(500).json({ error: e.message || "Eroare la inițierea plății" });
   }
 });
+// ✅ confirmarea plății după redirectul din Stripe (fără webhook)
+router.get("/confirm", async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(500).json({ error: "Stripe cheie lipsă (STRIPE_SECRET_KEY)" });
+    }
+
+    const { session_id } = req.query;
+    if (!session_id) return res.status(400).json({ error: "Lipsește session_id" });
+
+    const session = await stripe.checkout.sessions.retrieve(session_id, {
+      expand: ["line_items.data.price.product"],
+    });
+
+    if (session.payment_status !== "paid") {
+      return res.status(400).json({ error: "Plata nu este confirmată încă." });
+    }
+
+    // listingId + plan le-am pus în metadata la create-checkout-session
+    const listingId = session.metadata?.listingId;
+    const plan = session.metadata?.plan || "featured7";
+    if (!listingId || !mongoose.Types.ObjectId.isValid(listingId)) {
+      return res.status(400).json({ error: "Metadata lipsă/invalidă" });
+    }
+
+    // calculează featuredUntil în funcție de plan
+    const now = new Date();
+    let days = 7;
+    if (plan === "featured30") days = 30;
+    const featuredUntil = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+    const updated = await Listing.findByIdAndUpdate(
+      listingId,
+      { $set: { featuredUntil } },
+      { new: true }
+    ).lean();
+
+    if (!updated) return res.status(404).json({ error: "Anunț inexistent" });
+
+    return res.json({
+      ok: true,
+      listingId,
+      plan,
+      featuredUntil,
+      message: "Anunțul a fost promovat cu succes.",
+    });
+  } catch (e) {
+    console.error("stripe/confirm error:", e);
+    return res.status(500).json({ error: e.message || "Eroare confirmare" });
+  }
+});
 
 export default router;
