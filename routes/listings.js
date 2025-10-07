@@ -10,7 +10,10 @@ const router = express.Router();
 ======================================================= */
 router.get("/", async (req, res) => {
   try {
-    const listings = await Listing.find().sort({ createdAt: -1 }).lean();
+    const listings = await Listing.find()
+      .sort({ createdAt: -1 })
+      .lean();
+
     res.json(listings);
   } catch (e) {
     console.error("Eroare la GET /api/listings:", e);
@@ -30,7 +33,7 @@ router.get("/:id", async (req, res) => {
     }
 
     const listing = await Listing.findById(id)
-      .populate("user", "_id name email")
+      .populate("user", "_id name email") // 🔹 Populăm user-ul proprietar
       .lean();
 
     if (!listing) {
@@ -112,9 +115,14 @@ router.post("/", auth, async (req, res) => {
 router.put("/:id", auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const listing = await Listing.findById(id);
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "ID anunț invalid" });
+    }
+
+    const listing = await Listing.findById(id);
     if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
+
     if (String(listing.user) !== String(req.user.id)) {
       return res.status(403).json({ error: "Nu ai dreptul să editezi acest anunț" });
     }
@@ -135,9 +143,14 @@ router.put("/:id", auth, async (req, res) => {
 router.delete("/:id", auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const listing = await Listing.findById(id);
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "ID anunț invalid" });
+    }
+
+    const listing = await Listing.findById(id);
     if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
+
     if (String(listing.user) !== String(req.user.id)) {
       return res.status(403).json({ error: "Nu ai dreptul să ștergi acest anunț" });
     }
