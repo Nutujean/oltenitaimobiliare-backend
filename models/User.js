@@ -1,27 +1,30 @@
-// models/User.js
 import mongoose from "mongoose";
 
-const userSchema = new mongoose.Schema(
+const { Schema } = mongoose;
+
+const UserSchema = new Schema(
   {
-    name: { type: String, trim: true },
+    name: {
+      type: String,
+      required: [true, "Numele este obligatoriu"],
+      trim: true,
+    },
     email: {
       type: String,
-      required: true,
-      trim: true,
+      required: [true, "Emailul este obligatoriu"],
+      unique: true,
       lowercase: true,
-      unique: true,   // ✅ index unic declarat O SINGURĂ DATĂ aici
+      trim: true,
     },
-    passwordHash: { type: String, required: true },
-
-    // Dacă folosești verificare email:
-    isVerified: { type: Boolean, default: false },
-    verificationToken: { type: String, default: null },
-    verificationExpires: { type: Date, default: null },
+    password: {
+      type: String,
+      required: [true, "Parola este obligatorie"],
+    },
+    verified: { type: Boolean, default: false },
+    verificationToken: { type: String },
+    verificationTokenExpires: { type: Date },
   },
   { timestamps: true }
 );
 
-// ❌ NU mai adăuga userSchema.index({ email: 1 }, { unique: true })
-// ❌ NU mai pune "index: true" separat pe email
-
-export default mongoose.model("User", userSchema);
+export default mongoose.model("User", UserSchema);
