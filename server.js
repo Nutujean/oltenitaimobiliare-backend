@@ -5,19 +5,17 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 mongoose.set("autoIndex", process.env.NODE_ENV !== "production");
 
-// rute existente
+// rute
 import authRoutes from "./routes/authRoutes.js";
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
-// ✅ Stripe
 import stripeRoutes from "./routes/stripeRoutes.js";
 
 dotenv.config();
 
 const app = express();
 
-/* ---------------- CORS SUPER-LAX (până terminăm integrarea) ---------------- */
-// 1) mic fallback ca să aibă CORS chiar și pe erori/404
+/* ---------------- CORS LAX ---------------- */
 app.use((req, res, next) => {
   const origin = req.headers.origin || "*";
   res.header("Access-Control-Allow-Origin", origin);
@@ -31,13 +29,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// 2) middleware-ul standard cors, după fallback (nu strică, ajută)
 app.use(
   cors({
-    origin: (_origin, cb) => cb(null, true), // acceptă orice origin
+    origin: (_origin, cb) => cb(null, true),
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: false,
   })
 );
 
@@ -66,13 +62,13 @@ app.get("/api/health", (_req, res) => {
 });
 
 /* ---------------- Rute API ---------------- */
+// 🔹 ordinea e esențială
 app.use("/api/auth", authRoutes);
-app.use("/api/listings", listingsRoutes);
 app.use("/api/users", usersRoutes);
-
-// ✅ montează Stripe DUPĂ CORS
 app.use("/api/stripe", stripeRoutes);
-console.log("✔ Stripe routes mounted at /api/stripe");
+app.use("/api/listings", listingsRoutes); // trebuie să fie ultimul, după auth/users
+
+console.log("✔ Rute Stripe + Listings montate");
 
 /* ---------------- 404 API ---------------- */
 app.use((req, res) => {
