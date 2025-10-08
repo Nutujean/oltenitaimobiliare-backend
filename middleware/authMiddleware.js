@@ -5,22 +5,40 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_key";
 
 export default function auth(req, res, next) {
   try {
-    const hdr = req.headers.authorization || req.headers.Authorization;
-    if (!hdr) return res.status(401).json({ error: "Lipsește Authorization" });
+    const authHeader = req.headers.authorization || req.headers.Authorization;
 
-    const parts = String(hdr).split(" ");
-    const token =
-      parts.length === 2 && /^Bearer$/i.test(parts[0]) ? parts[1] : String(hdr);
-
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET); // { id, email, name, iat, exp }
-      req.user = decoded;
-      return next();
-    } catch (err) {
-      console.error("JWT verify error:", err?.message);
-      return res.status(401).json({ error: "Token invalid sau expirat" });
+    // 🔴 dacă lipsește headerul complet
+    if (!authHeader) {
+      return res.status(401).json({ error: "Nu ești autentificat." });
     }
-  } catch {
-    return res.status(500).json({ error: "Eroare autentificare" });
+
+    // 🔹 extragem tokenul
+    const tokenParts = authHeader.split(" ");
+    const token =
+      tokenParts.length === 2 && /^Bearer$/i.test(tokenParts[0])
+        ? tokenParts[1]
+        : authHeader;
+
+    if (!token || token === "null" || token === "undefined") {
+      return res.status(401).json({ error: "Token lipsă sau invalid." });
+    }
+
+    // 🔹 verificăm validitatea tokenului
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      console.error("❌ Token invalid:", err.message);
+      return res.status(401).json({ error: "Token invalid sau expirat." });
+    }
+
+    // ✅ salvăm user-ul în req.user
+    req.user = decoded;
+
+    // mergem mai departe
+    next();
+  } catch (err) {
+    console.error("Eroare în middleware auth:", err.message);
+    return res.status(500).json({ error: "Eroare la autentificare." });
   }
 }
