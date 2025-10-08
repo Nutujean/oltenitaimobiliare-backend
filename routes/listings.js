@@ -22,6 +22,22 @@ router.get("/", async (req, res) => {
 });
 
 /* =======================================================
+   🟩 GET anunțurile utilizatorului logat
+======================================================= */
+router.get("/my", auth, async (req, res) => {
+  try {
+    const myListings = await Listing.find({ user: req.user.id })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json(myListings);
+  } catch (e) {
+    console.error("Eroare la GET /api/listings/my:", e);
+    res.status(500).json({ error: "Eroare server la anunțurile mele" });
+  }
+});
+
+/* =======================================================
    🟩 GET un singur anunț (cu user populat)
 ======================================================= */
 router.get("/:id", async (req, res) => {
@@ -44,22 +60,6 @@ router.get("/:id", async (req, res) => {
   } catch (e) {
     console.error("Eroare la GET /api/listings/:id:", e);
     res.status(500).json({ error: "Eroare server la preluarea anunțului" });
-  }
-});
-
-/* =======================================================
-   🟩 GET anunțurile utilizatorului logat
-======================================================= */
-router.get("/my", auth, async (req, res) => {
-  try {
-    const myListings = await Listing.find({ user: req.user.id })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    res.json(myListings);
-  } catch (e) {
-    console.error("Eroare la GET /api/listings/my:", e);
-    res.status(500).json({ error: "Eroare server la anunțurile mele" });
   }
 });
 
