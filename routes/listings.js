@@ -1,3 +1,4 @@
+// routes/listings.js
 import express from "express";
 import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
@@ -10,10 +11,7 @@ const router = express.Router();
 ======================================================= */
 router.get("/", async (req, res) => {
   try {
-    const listings = await Listing.find()
-      .sort({ createdAt: -1 })
-      .lean();
-
+    const listings = await Listing.find().sort({ createdAt: -1 }).lean();
     res.json(listings);
   } catch (e) {
     console.error("Eroare la GET /api/listings:", e);
@@ -22,7 +20,7 @@ router.get("/", async (req, res) => {
 });
 
 /* =======================================================
-   🟩 GET anunțurile utilizatorului logat
+   🟩 GET anunțurile utilizatorului logat — înainte de /:id !!!
 ======================================================= */
 router.get("/my", auth, async (req, res) => {
   try {
@@ -49,12 +47,10 @@ router.get("/:id", async (req, res) => {
     }
 
     const listing = await Listing.findById(id)
-      .populate("user", "_id name email") // 🔹 Populăm user-ul proprietar
+      .populate("user", "_id name email")
       .lean();
 
-    if (!listing) {
-      return res.status(404).json({ error: "Anunț inexistent" });
-    }
+    if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
 
     res.json(listing);
   } catch (e) {
@@ -110,12 +106,11 @@ router.post("/", auth, async (req, res) => {
 });
 
 /* =======================================================
-   🟩 PUT - Editează un anunț (doar proprietarul)
+   🟩 PUT - Editează un anunț (doar proprietarul autentificat)
 ======================================================= */
 router.put("/:id", auth, async (req, res) => {
   try {
     const { id } = req.params;
-
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID anunț invalid" });
     }
@@ -124,13 +119,18 @@ router.put("/:id", auth, async (req, res) => {
     if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
 
     if (String(listing.user) !== String(req.user.id)) {
-      return res.status(403).json({ error: "Nu ai dreptul să editezi acest anunț" });
+      console.warn(
+        `❌ Tentativă editare neautorizată: ${req.user.id} -> ${listing._id}`
+      );
+      return res
+        .status(403)
+        .json({ error: "Nu ai permisiunea să editezi acest anunț." });
     }
 
     Object.assign(listing, req.body);
     await listing.save();
 
-    res.json(listing);
+    res.json({ ok: true, message: "Anunț actualizat cu succes.", listing });
   } catch (e) {
     console.error("Eroare la PUT /api/listings/:id:", e);
     res.status(500).json({ error: "Eroare la editarea anunțului" });
@@ -138,12 +138,11 @@ router.put("/:id", auth, async (req, res) => {
 });
 
 /* =======================================================
-   🟩 DELETE - Șterge un anunț (doar proprietarul)
+   🟩 DELETE - Șterge un anunț (doar proprietarul autentificat)
 ======================================================= */
 router.delete("/:id", auth, async (req, res) => {
   try {
     const { id } = req.params;
-
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID anunț invalid" });
     }
@@ -152,11 +151,16 @@ router.delete("/:id", auth, async (req, res) => {
     if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
 
     if (String(listing.user) !== String(req.user.id)) {
-      return res.status(403).json({ error: "Nu ai dreptul să ștergi acest anunț" });
+      console.warn(
+        `❌ Tentativă ștergere neautorizată: ${req.user.id} -> ${listing._id}`
+      );
+      return res
+        .status(403)
+        .json({ error: "Nu ai permisiunea să ștergi acest anunț." });
     }
 
     await listing.deleteOne();
-    res.json({ ok: true, message: "Anunț șters cu succes" });
+    res.json({ ok: true, message: "Anunț șters cu succes." });
   } catch (e) {
     console.error("Eroare la DELETE /api/listings/:id:", e);
     res.status(500).json({ error: "Eroare la ștergerea anunțului" });
