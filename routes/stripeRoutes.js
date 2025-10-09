@@ -17,9 +17,9 @@ const stripe = STRIPE_SECRET_KEY
   : null;
 
 const PLANS = {
-  featured7:  { label: "Promovare anunț – 7 zile",  amountEUR: 5 },
-  featured14: { label: "Promovare anunț – 14 zile", amountEUR: 9 },
-  featured30: { label: "Promovare anunț – 30 zile", amountEUR: 15 },
+  featured7:  { label: "Promovare anunț – 7 zile",  amountRON: 50 },
+  featured14: { label: "Promovare anunț – 14 zile", amountRON: 85 },
+  featured30: { label: "Promovare anunț – 30 zile", amountRON: 125 },
 };
 
 const getIdFromSlug = (slugOrId = "") => {
@@ -57,16 +57,16 @@ router.post("/create-checkout-session", async (req, res) => {
     if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
 
     const chosen = PLANS[plan] || PLANS.featured7;
-    const amountCents = Math.round(chosen.amountEUR * 100);
+    const amountCents = Math.round(chosen.amountRON * 100);
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      currency: "eur",
+      currency: "ron",
       line_items: [
         {
           quantity: 1,
           price_data: {
-            currency: "eur",
+            currency: "ron",
             unit_amount: amountCents,
             product_data: {
               name: chosen.label,
