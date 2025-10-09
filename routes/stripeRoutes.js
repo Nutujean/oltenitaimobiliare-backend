@@ -57,7 +57,7 @@ router.post("/create-checkout-session", async (req, res) => {
     if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
 
     const chosen = PLANS[plan] || PLANS.featured7;
-    const amountCents = Math.round(chosen.amountRON * 100);
+    const amountBani = Math.round(chosen.amountRON * 100);
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -67,7 +67,7 @@ router.post("/create-checkout-session", async (req, res) => {
           quantity: 1,
           price_data: {
             currency: "ron",
-            unit_amount: amountCents,
+            unit_amount: amountBani,
             product_data: {
               name: chosen.label,
               description: listing.title,
