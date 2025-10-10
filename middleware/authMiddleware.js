@@ -1,44 +1,43 @@
-// middleware/authMiddleware.js
 import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_key";
-
-export default function auth(req, res, next) {
+/**
+ * ✅ Middleware pentru protejarea rutelor (verifică token JWT)
+ */
+export const protect = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization || req.headers.Authorization;
+    let token;
 
-    // 🔴 dacă lipsește headerul complet
-    if (!authHeader) {
-      return res.status(401).json({ error: "Nu ești autentificat." });
+    // verifică dacă există token în header
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Bearer")
+    ) {
+      token = req.headers.authorization.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      req.user = await User.findById(decoded.id).select("-password");
+      if (!req.user) {
+        return res.status(404).json({ message: "Utilizatorul nu există." });
+      }
+
+      return next();
     }
 
-    // 🔹 extragem tokenul
-    const tokenParts = authHeader.split(" ");
-    const token =
-      tokenParts.length === 2 && /^Bearer$/i.test(tokenParts[0])
-        ? tokenParts[1]
-        : authHeader;
-
-    if (!token || token === "null" || token === "undefined") {
-      return res.status(401).json({ error: "Token lipsă sau invalid." });
-    }
-
-    // 🔹 verificăm validitatea tokenului
-    let decoded;
-    try {
-      decoded = jwt.verify(token, JWT_SECRET);
-    } catch (err) {
-      console.error("❌ Token invalid:", err.message);
-      return res.status(401).json({ error: "Token invalid sau expirat." });
-    }
-
-    // ✅ salvăm user-ul în req.user
-    req.user = decoded;
-
-    // mergem mai departe
-    next();
-  } catch (err) {
-    console.error("Eroare în middleware auth:", err.message);
-    return res.status(500).json({ error: "Eroare la autentificare." });
+    return res.status(401).json({ message: "Acces neautorizat, fără token." });
+  } catch (error) {
+    console.error("Eroare protect middleware:", error);
+    res.status(401).json({ message: "Token invalid sau expirat." });
   }
-}
+};
+
+/**
+ * 🔹 Middleware opțional pentru admin
+ */
+export const admin = (req, res, next) => {
+  if (req.user && req.user.isAdmin) {
+    next();
+  } else {
+    res.status(403).json({ message: "Acces interzis - doar admin." });
+  }
+};
