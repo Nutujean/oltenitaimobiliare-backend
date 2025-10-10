@@ -1,25 +1,37 @@
-// routes/users.js
 import express from "express";
-import auth from "../middleware/authMiddleware.js";
+import { protect, admin } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
 
 const router = express.Router();
 
-/** GET /api/users/me  (Authorization: Bearer <token>) */
-router.get("/me", auth, async (req, res) => {
+/**
+ * ✅ Alias pentru /users/profile
+ * Rezolvă eroarea 404 venită din frontend (Anunturile Mele)
+ */
+router.get("/profile", protect, async (req, res) => {
   try {
-    const id = req.user?.id || req.user?._id;
-    if (!id) return res.status(401).json({ error: "Neautorizat" });
-
-    const user = await User.findById(id).select(
-      "-password -verificationToken -verificationTokenExpires -__v"
-    );
-    if (!user) return res.status(404).json({ error: "Utilizator inexistent" });
-
+    const user = await User.findById(req.user._id).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "Utilizator negăsit." });
+    }
     res.json(user);
-  } catch (e) {
-    console.error("GET /users/me error:", e);
-    res.status(500).json({ error: "Eroare server la /users/me" });
+  } catch (error) {
+    console.error("Eroare la /users/profile:", error);
+    res.status(500).json({ message: "Eroare server la profil." });
+  }
+});
+
+/**
+ * 🔹 Exemplu de rută admin (poate rămâne sau fi ignorată)
+ * (dacă ai nevoie să vezi toți utilizatorii)
+ */
+router.get("/all", protect, admin, async (req, res) => {
+  try {
+    const users = await User.find().select("-password");
+    res.json(users);
+  } catch (error) {
+    console.error("Eroare la /users/all:", error);
+    res.status(500).json({ message: "Eroare la obținerea utilizatorilor." });
   }
 });
 
