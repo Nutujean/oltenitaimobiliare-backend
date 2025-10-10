@@ -42,6 +42,6 @@ export const admin = (req, res, next) => {
 };
 
 /**
- * 🔹 Export implicit (compatibilitate cu vechiul 'auth')
+ * 🔹 Export implicit (compatibilitate cu import auth)
  */
 export default protect;
