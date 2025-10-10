@@ -1,6 +1,5 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
-import protect from "../middleware/authMiddleware.js";
 
 /**
  * ✅ Middleware principal pentru protejarea rutelor (verifică token JWT)
