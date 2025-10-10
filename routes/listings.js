@@ -2,7 +2,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
-import auth from "../middleware/authMiddleware.js";
+import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -62,7 +62,7 @@ router.get("/:id", async (req, res) => {
 /* =======================================================
    🟩 POST - Adaugă un nou anunț (autentificat)
 ======================================================= */
-router.post("/", auth, async (req, res) => {
+router.post("/", protect, async (req, res) => {
   try {
     const newListing = new Listing({
       ...req.body,
@@ -109,7 +109,7 @@ router.put("/:id", auth, async (req, res) => {
 /* =======================================================
    🟩 DELETE - Șterge un anunț (doar proprietarul)
 ======================================================= */
-router.delete("/:id", auth, async (req, res) => {
+router.delete("/:id", protect, async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
