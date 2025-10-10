@@ -1,5 +1,5 @@
 import express from "express";
-import { protect, admin } from "../middleware/authMiddleware.js";
+import { protect, } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
