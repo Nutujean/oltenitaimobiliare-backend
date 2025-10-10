@@ -1,5 +1,5 @@
 import express from "express";
-import { protect, admin } from "../middleware/authMiddleware.js";
+import { protect, } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
 
 const router = express.Router();
@@ -16,7 +16,7 @@ router.get("/profile", protect, async (req, res) => {
     }
     res.json(user);
   } catch (error) {
-    console.error("Eroare la /users/profile:", error);
+    console.error("Eroare la /profile:", error);
     res.status(500).json({ message: "Eroare server la profil." });
   }
 });
