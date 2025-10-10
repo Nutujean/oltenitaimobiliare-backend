@@ -22,7 +22,7 @@ router.get("/", async (req, res) => {
 /* =======================================================
    🟩 GET anunțurile utilizatorului logat (autentificat)
 ======================================================= */
-router.get("/my", auth, async (req, res) => {
+router.get("/my", protect, async (req, res) => {
   try {
     const myListings = await Listing.find({ user: req.user._id || req.user.id })
       .sort({ createdAt: -1 })
@@ -80,7 +80,7 @@ router.post("/", protect, async (req, res) => {
 /* =======================================================
    🟩 PUT - Editează un anunț (doar proprietarul)
 ======================================================= */
-router.put("/:id", auth, async (req, res) => {
+router.put("/:id", protect, async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
