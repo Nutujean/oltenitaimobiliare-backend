@@ -2,13 +2,12 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
 /**
- * ✅ Middleware pentru protejarea rutelor (verifică token JWT)
+ * ✅ Middleware principal pentru protejarea rutelor (verifică token JWT)
  */
 export const protect = async (req, res, next) => {
   try {
     let token;
 
-    // verifică dacă există token în header
     if (
       req.headers.authorization &&
       req.headers.authorization.startsWith("Bearer")
@@ -41,3 +40,8 @@ export const admin = (req, res, next) => {
     res.status(403).json({ message: "Acces interzis - doar admin." });
   }
 };
+
+/**
+ * 🔹 Export implicit (compatibilitate cu vechiul 'auth')
+ */
+export default protect;
