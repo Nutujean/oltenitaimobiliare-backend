@@ -9,8 +9,12 @@ mongoose.set("autoIndex", process.env.NODE_ENV !== "production");
 import authRoutes from "./routes/authRoutes.js";
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
-import stripeRoutes from "./routes/stripeRoutes.js"
-import contactRoutes from "./routes/contactRoutes.js";;
+import stripeRoutes from "./routes/stripeRoutes.js";
+import contactRoutes from "./routes/contactRoutes.js";
+
+// 🕒 cron și model Listing (adăugat)
+import cron from "node-cron";
+import Listing from "./models/Listing.js";
 
 dotenv.config();
 
@@ -71,6 +75,37 @@ app.use("/api/listings", listingsRoutes); // trebuie să fie ultimul, după auth
 app.use("/api/contact", contactRoutes);
 
 console.log("✔ Rute Stripe + Listings montate");
+
+/* =======================================================
+   🕒 CRON zilnic pentru dezactivarea automată a anunțurilor expirate
+======================================================= */
+cron.schedule("0 2 * * *", async () => {
+  try {
+    const now = new Date();
+
+    // Expiră anunțurile gratuite
+    const expiredFree = await Listing.updateMany(
+      { isFree: true, expiresAt: { $lt: now }, status: { $ne: "expirat" } },
+      { $set: { status: "expirat" } }
+    );
+
+    // Expiră anunțurile promovate
+    const expiredFeatured = await Listing.updateMany(
+      { featuredUntil: { $lt: now }, status: { $ne: "expirat" } },
+      { $set: { status: "expirat" } }
+    );
+
+    if (expiredFree.modifiedCount > 0 || expiredFeatured.modifiedCount > 0) {
+      console.log(
+        `🕒 [CRON] Dezactivate: ${
+          expiredFree.modifiedCount + expiredFeatured.modifiedCount
+        } anunțuri expirate.`
+      );
+    }
+  } catch (err) {
+    console.error("❌ Eroare CRON:", err);
+  }
+});
 
 /* ---------------- 404 API ---------------- */
 app.use((req, res) => {
