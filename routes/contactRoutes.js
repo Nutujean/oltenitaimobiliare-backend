@@ -24,7 +24,7 @@ router.post("/", async (req, res) => {
         "api-key": apiKey,
       },
       body: JSON.stringify({
-        sender: { name: "Oltenița Imobiliare", email: "noreply@oltenitaimobiliare.ro" },
+        sender: { name: "Oltenița Imobiliare", email: "oltenitaimobiliare@gmail.com" },
         to: [{ email: "oltenitaimobiliare@gmail.com", name: "Oltenița Imobiliare" }],
         subject: `Mesaj nou de la ${name}`,
         htmlContent: `
