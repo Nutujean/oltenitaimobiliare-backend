@@ -8,8 +8,8 @@ const router = express.Router();
 
 /* =======================================================
    🟩 GET toate anunțurile (public)
-   - arată TOATE (inclusiv cele vechi fără isFree / expiresAt)
-   - ascunde doar cele expirate clar
+   - Afișează toate anunțurile active sau fără expirare
+   - Ascunde doar cele clar expirate (free sau promovate)
 ======================================================= */
 router.get("/", async (req, res) => {
   try {
@@ -17,10 +17,10 @@ router.get("/", async (req, res) => {
 
     const listings = await Listing.find({
       $or: [
-        { isFree: { $exists: false } },          // anunțuri vechi
-        { expiresAt: null },                     // anunțuri fără expirare
-        { expiresAt: { $gte: now } },            // anunțuri încă active
-        { featuredUntil: { $gte: now } },        // promovate
+        { featuredUntil: { $gte: now } },        // ✅ promovate valabile
+        { expiresAt: { $gte: now } },            // ✅ gratuite încă active
+        { featuredUntil: null, expiresAt: null }, // ✅ anunțuri vechi (fără expirare)
+        { isFree: { $exists: false } },          // ✅ anunțuri dinaintea sistemului nou
       ],
     })
       .sort({ createdAt: -1 })
@@ -96,7 +96,7 @@ router.post("/", protect, async (req, res) => {
       });
     }
 
-    // creează anunțul nou
+    // creează anunțul nou gratuit cu expirare 10 zile
     const newListing = new Listing({
       ...req.body,
       user: userId,
