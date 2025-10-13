@@ -9,7 +9,8 @@ mongoose.set("autoIndex", process.env.NODE_ENV !== "production");
 import authRoutes from "./routes/authRoutes.js";
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
-import stripeRoutes from "./routes/stripeRoutes.js";
+import stripeRoutes from "./routes/stripeRoutes.js"
+import contactRoutes from "./routes/contactRoutes.js";;
 
 dotenv.config();
 
@@ -67,6 +68,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/listings", listingsRoutes); // trebuie să fie ultimul, după auth/users
+app.use("/api/contact", contactRoutes);
 
 console.log("✔ Rute Stripe + Listings montate");
 
