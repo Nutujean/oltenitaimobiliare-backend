@@ -76,7 +76,7 @@ router.post("/create-checkout-session", async (req, res) => {
       ],
       metadata: { listingId: String(id), plan },
       success_url: `${FRONTEND}/promovare-succes?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${FRONTEND}/anunt/${id}?payment=cancel`,
+      cancel_url: `${FRONTEND}/promovare-anulata`,
     });
 
     res.json({ url: session.url, id: session.id });

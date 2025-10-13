@@ -39,11 +39,18 @@ const ListingSchema = new Schema(
       default: "vanzare",
     },
 
-    // 🔹 câmp nou pentru promovare
+    // 🔹 câmp pentru promovare
     featuredUntil: { type: Date, default: null },
 
     // opționale moștenite
     userEmail: { type: String, trim: true },
+
+    // 🆕 Limitare anunț gratuit
+    isFree: { type: Boolean, default: true },
+    expiresAt: {
+      type: Date,
+      default: () => new Date(Date.now() + 10 * 24 * 60 * 60 * 1000), // 10 zile
+    },
   },
   { timestamps: true }
 );
@@ -53,5 +60,6 @@ ListingSchema.index({ createdAt: -1 });
 ListingSchema.index({ category: 1 });
 ListingSchema.index({ location: 1 });
 ListingSchema.index({ dealType: 1 });
+ListingSchema.index({ expiresAt: 1 }); // 🔹 index suplimentar pt expirări
 
 export default mongoose.model("Listing", ListingSchema);
