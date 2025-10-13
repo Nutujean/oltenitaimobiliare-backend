@@ -8,14 +8,19 @@ const router = express.Router();
 
 /* =======================================================
    🟩 GET toate anunțurile (public)
+   - arată TOATE (inclusiv cele vechi fără isFree / expiresAt)
+   - ascunde doar cele expirate clar
 ======================================================= */
 router.get("/", async (req, res) => {
   try {
     const now = new Date();
+
     const listings = await Listing.find({
       $or: [
-        { featuredUntil: { $gte: now } }, // anunțuri promovate
-        { expiresAt: { $gte: now } }, // anunțuri gratuite încă active
+        { isFree: { $exists: false } },          // anunțuri vechi
+        { expiresAt: null },                     // anunțuri fără expirare
+        { expiresAt: { $gte: now } },            // anunțuri încă active
+        { featuredUntil: { $gte: now } },        // promovate
       ],
     })
       .sort({ createdAt: -1 })
@@ -29,7 +34,7 @@ router.get("/", async (req, res) => {
 });
 
 /* =======================================================
-   🟩 GET anunțurile utilizatorului logat (autentificat)
+   🟩 GET anunțurile utilizatorului logat
 ======================================================= */
 router.get("/my", protect, async (req, res) => {
   try {
@@ -47,7 +52,7 @@ router.get("/my", protect, async (req, res) => {
 });
 
 /* =======================================================
-   🟩 GET un singur anunț (cu user populat)
+   🟩 GET un singur anunț
 ======================================================= */
 router.get("/:id", async (req, res) => {
   try {
@@ -77,7 +82,7 @@ router.post("/", protect, async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
 
-    // 🔍 Verificăm dacă are deja un anunț gratuit activ
+    // verifică dacă utilizatorul are deja un anunț gratuit activ
     const existingFree = await Listing.findOne({
       user: userId,
       isFree: true,
@@ -91,12 +96,12 @@ router.post("/", protect, async (req, res) => {
       });
     }
 
-    // 🔹 Creăm anunțul gratuit cu expirare la 10 zile
+    // creează anunțul nou
     const newListing = new Listing({
       ...req.body,
       user: userId,
       isFree: true,
-      expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000), // 10 zile
     });
 
     await newListing.save();
@@ -120,7 +125,6 @@ router.put("/:id", protect, async (req, res) => {
     const listing = await Listing.findById(id);
     if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
 
-    // ✅ verificăm proprietarul corect
     if (String(listing.user) !== String(req.user._id || req.user.id)) {
       console.warn(
         `❌ Tentativă editare neautorizată: ${req.user._id || req.user.id}`
@@ -153,7 +157,6 @@ router.delete("/:id", protect, async (req, res) => {
     const listing = await Listing.findById(id);
     if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
 
-    // ✅ verificăm proprietarul
     if (String(listing.user) !== String(req.user._id || req.user.id)) {
       console.warn(
         `❌ Tentativă ștergere neautorizată: ${req.user._id || req.user.id}`
