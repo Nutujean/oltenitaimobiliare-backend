@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 import cron from "node-cron";
 import Listing from "./models/Listing.js";
 
-// Rute existente
+// 🔹 Rute existente
 import authRoutes from "./routes/authRoutes.js";
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
@@ -97,7 +97,16 @@ app.get("/share/:id", async (req, res) => {
 
     const shareUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
-    // ✅ Pagina complet statică pentru Facebook (fără redirect)
+    // 🧠 Detectăm dacă cererea vine de la Facebook sau de la un utilizator normal
+    const ua = req.headers["user-agent"] || "";
+    const isFacebookBot = ua.includes("facebookexternalhit") || ua.includes("Facebot");
+
+    if (!isFacebookBot) {
+      // 🔁 Utilizator real → redirecționăm direct către anunț
+      return res.redirect(302, shareUrl);
+    }
+
+    // 🧩 Crawler Facebook → trimitem meta-tagurile pentru preview
     const html = `
       <!DOCTYPE html>
       <html lang="ro">
@@ -127,6 +136,9 @@ app.get("/share/:id", async (req, res) => {
               👉 Vezi anunțul complet pe Oltenița Imobiliare
             </a>
           </p>
+          <script>
+            setTimeout(() => { window.location.href = "${shareUrl}"; }, 1500);
+          </script>
         </body>
       </html>
     `;
