@@ -3,24 +3,22 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-mongoose.set("autoIndex", process.env.NODE_ENV !== "production");
+import cron from "node-cron";
+import Listing from "./models/Listing.js";
 
-// rute
+// Rute existente
 import authRoutes from "./routes/authRoutes.js";
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 
-// 🕒 cron și model Listing (adăugat)
-import cron from "node-cron";
-import Listing from "./models/Listing.js";
-
 dotenv.config();
+mongoose.set("autoIndex", process.env.NODE_ENV !== "production");
 
 const app = express();
 
-/* ---------------- CORS LAX ---------------- */
+/* ---------------- CORS ---------------- */
 app.use((req, res, next) => {
   const origin = req.headers.origin || "*";
   res.header("Access-Control-Allow-Origin", origin);
@@ -67,14 +65,79 @@ app.get("/api/health", (_req, res) => {
 });
 
 /* ---------------- Rute API ---------------- */
-// 🔹 ordinea e esențială
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/stripe", stripeRoutes);
-app.use("/api/listings", listingsRoutes); // trebuie să fie ultimul, după auth/users
+app.use("/api/listings", listingsRoutes);
 app.use("/api/contact", contactRoutes);
 
 console.log("✔ Rute Stripe + Listings montate");
+
+/* =======================================================
+   🟦 Pagină specială pentru distribuire Facebook (Open Graph)
+======================================================= */
+app.get("/share/:id", async (req, res) => {
+  try {
+    const listing = await Listing.findById(req.params.id).lean();
+    if (!listing) {
+      return res
+        .status(404)
+        .send("<h1>Anunțul nu a fost găsit</h1><p>Oltenița Imobiliare</p>");
+    }
+
+    const image =
+      listing.images?.[0] ||
+      listing.imageUrl ||
+      "https://oltenitaimobiliare.ro/preview.jpg";
+
+    const title = listing.title || "Anunț imobiliar din Oltenița";
+    const desc =
+      listing.description?.substring(0, 160) ||
+      "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
+
+    const shareUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
+
+    // ✅ Pagina complet statică pentru Facebook (fără redirect)
+    const html = `
+      <!DOCTYPE html>
+      <html lang="ro">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>${title}</title>
+
+          <!-- Open Graph -->
+          <meta property="og:title" content="${title}" />
+          <meta property="og:description" content="${desc}" />
+          <meta property="og:image" content="${image}" />
+          <meta property="og:url" content="${shareUrl}" />
+          <meta property="og:type" content="article" />
+
+          <!-- Twitter -->
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content="${title}" />
+          <meta name="twitter:description" content="${desc}" />
+          <meta name="twitter:image" content="${image}" />
+        </head>
+        <body style="font-family:sans-serif;text-align:center;margin-top:60px;">
+          <h2 style="color:#0a58ca;">${title}</h2>
+          <p style="max-width:600px;margin:10px auto;">${desc}</p>
+          <p>
+            <a href="${shareUrl}" style="color:#0a58ca;font-weight:bold;text-decoration:none;">
+              👉 Vezi anunțul complet pe Oltenița Imobiliare
+            </a>
+          </p>
+        </body>
+      </html>
+    `;
+
+    res.set("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  } catch (err) {
+    console.error("❌ Eroare la generarea paginii de share:", err);
+    res.status(500).send("Eroare internă server");
+  }
+});
 
 /* =======================================================
    🕒 CRON zilnic pentru dezactivarea automată a anunțurilor expirate
@@ -83,13 +146,11 @@ cron.schedule("0 2 * * *", async () => {
   try {
     const now = new Date();
 
-    // Expiră anunțurile gratuite
     const expiredFree = await Listing.updateMany(
       { isFree: true, expiresAt: { $lt: now }, status: { $ne: "expirat" } },
       { $set: { status: "expirat" } }
     );
 
-    // Expiră anunțurile promovate
     const expiredFeatured = await Listing.updateMany(
       { featuredUntil: { $lt: now }, status: { $ne: "expirat" } },
       { $set: { status: "expirat" } }
