@@ -97,16 +97,14 @@ app.get("/share/:id", async (req, res) => {
 
     const shareUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
-    // 🧠 Detectăm dacă cererea vine de la Facebook sau de la un utilizator normal
     const ua = req.headers["user-agent"] || "";
     const isFacebookBot = ua.includes("facebookexternalhit") || ua.includes("Facebot");
 
     if (!isFacebookBot) {
-      // 🔁 Utilizator real → redirecționăm direct către anunț
       return res.redirect(302, shareUrl);
     }
 
-    // 🧩 Crawler Facebook → trimitem meta-tagurile pentru preview
+    // ✅ HTML cu meta-taguri corect configurate pentru Facebook
     const html = `
       <!DOCTYPE html>
       <html lang="ro">
@@ -120,6 +118,7 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:description" content="${desc}" />
           <meta property="og:image" content="${image}" />
           <meta property="og:url" content="${shareUrl}" />
+          <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
 
           <!-- Twitter -->
@@ -127,6 +126,9 @@ app.get("/share/:id", async (req, res) => {
           <meta name="twitter:title" content="${title}" />
           <meta name="twitter:description" content="${desc}" />
           <meta name="twitter:image" content="${image}" />
+
+          <!-- Redirecționare automată pentru utilizatorii reali -->
+          <meta http-equiv="refresh" content="1.5; url=${shareUrl}" />
         </head>
         <body style="font-family:sans-serif;text-align:center;margin-top:60px;">
           <h2 style="color:#0a58ca;">${title}</h2>
@@ -136,9 +138,6 @@ app.get("/share/:id", async (req, res) => {
               👉 Vezi anunțul complet pe Oltenița Imobiliare
             </a>
           </p>
-          <script>
-            setTimeout(() => { window.location.href = "${shareUrl}"; }, 1500);
-          </script>
         </body>
       </html>
     `;
