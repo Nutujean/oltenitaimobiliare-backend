@@ -78,21 +78,25 @@ console.log("✔ Rute Stripe + Listings montate");
 ======================================================= */
 app.get("/share/:id", async (req, res) => {
   try {
+    console.log("🔗 Cerere share pentru ID:", req.params.id);
+
     const listing = await Listing.findById(req.params.id).lean();
     if (!listing) {
+      console.warn("⚠️ Anunț negăsit:", req.params.id);
       return res
         .status(404)
         .send("<h1>Anunțul nu a fost găsit</h1><p>Oltenița Imobiliare</p>");
     }
 
-    const image =
+    let image =
       listing.images?.[0] ||
       listing.imageUrl ||
       "https://oltenitaimobiliare.ro/preview.jpg";
+
     // 💡 Forțăm HTTPS direct către Cloudinary, fără parametri extra
     if (image.includes("cloudinary.com")) {
       image = image.split("?")[0].replace("/upload/", "/upload/f_auto,q_auto/");
-   }
+    }
 
     const title = listing.title || "Anunț imobiliar din Oltenița";
     const desc =
@@ -102,7 +106,8 @@ app.get("/share/:id", async (req, res) => {
     const shareUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
     const ua = req.headers["user-agent"] || "";
-    const isFacebookBot = ua.includes("facebookexternalhit") || ua.includes("Facebot");
+    const isFacebookBot =
+      ua.includes("facebookexternalhit") || ua.includes("Facebot");
 
     if (!isFacebookBot) {
       return res.redirect(302, shareUrl);

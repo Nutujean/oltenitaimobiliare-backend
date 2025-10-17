@@ -8,22 +8,27 @@ const router = express.Router();
 
 /* =======================================================
    🟩 GET toate anunțurile (public)
-   - Afișează toate anunțurile active sau fără expirare
-   - Ascunde doar cele clar expirate (free sau promovate)
+   - Afișează toate anunțurile active
+   - Acceptă query ?sort=newest|cheapest|expensive
 ======================================================= */
 router.get("/", async (req, res) => {
   try {
     const now = new Date();
+    const sortParam = req.query.sort || "newest";
+
+    let sortQuery = { createdAt: -1 }; // implicit: cele mai noi
+    if (sortParam === "cheapest") sortQuery = { price: 1 };
+    if (sortParam === "expensive") sortQuery = { price: -1 };
 
     const listings = await Listing.find({
       $or: [
-        { featuredUntil: { $gte: now } },        // ✅ promovate valabile
-        { expiresAt: { $gte: now } },            // ✅ gratuite încă active
-        { featuredUntil: null, expiresAt: null }, // ✅ anunțuri vechi (fără expirare)
-        { isFree: { $exists: false } },          // ✅ anunțuri dinaintea sistemului nou
+        { featuredUntil: { $gte: now } },
+        { expiresAt: { $gte: now } },
+        { featuredUntil: null, expiresAt: null },
+        { isFree: { $exists: false } },
       ],
     })
-      .sort({ createdAt: -1 })
+      .sort(sortQuery)
       .lean();
 
     res.json(listings);
@@ -82,7 +87,6 @@ router.post("/", protect, async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
 
-    // verifică dacă utilizatorul are deja un anunț gratuit activ
     const existingFree = await Listing.findOne({
       user: userId,
       isFree: true,
@@ -96,12 +100,11 @@ router.post("/", protect, async (req, res) => {
       });
     }
 
-    // creează anunțul nou gratuit cu expirare 10 zile
     const newListing = new Listing({
       ...req.body,
       user: userId,
       isFree: true,
-      expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000), // 10 zile
+      expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
     });
 
     await newListing.save();
@@ -126,12 +129,8 @@ router.put("/:id", protect, async (req, res) => {
     if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
 
     if (String(listing.user) !== String(req.user._id || req.user.id)) {
-      console.warn(
-        `❌ Tentativă editare neautorizată: ${req.user._id || req.user.id}`
-      );
-      return res
-        .status(403)
-        .json({ error: "Nu ai permisiunea să editezi acest anunț." });
+      console.warn(`❌ Tentativă editare neautorizată: ${req.user._id || req.user.id}`);
+      return res.status(403).json({ error: "Nu ai permisiunea să editezi acest anunț." });
     }
 
     Object.assign(listing, req.body);
@@ -158,12 +157,8 @@ router.delete("/:id", protect, async (req, res) => {
     if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
 
     if (String(listing.user) !== String(req.user._id || req.user.id)) {
-      console.warn(
-        `❌ Tentativă ștergere neautorizată: ${req.user._id || req.user.id}`
-      );
-      return res
-        .status(403)
-        .json({ error: "Nu ai permisiunea să ștergi acest anunț." });
+      console.warn(`❌ Tentativă ștergere neautorizată: ${req.user._id || req.user.id}`);
+      return res.status(403).json({ error: "Nu ai permisiunea să ștergi acest anunț." });
     }
 
     await listing.deleteOne();
