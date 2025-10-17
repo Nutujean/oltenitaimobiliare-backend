@@ -88,8 +88,16 @@ app.get("/share/:id", async (req, res) => {
         .send("<h1>Anunțul nu a fost găsit</h1><p>Oltenița Imobiliare</p>");
     }
 
-    // 🖼️ Folosim imaginea locală, nu Cloudinary
-    const image = `https://oltenitaimobiliare.ro/share-images/${listing._id}.jpg`;
+    // 🖼️ Folosim imaginea reală din Cloudinary (dacă există)
+    let image =
+      listing.images?.[0] ||
+      listing.imageUrl ||
+      "https://oltenitaimobiliare.ro/preview.jpg";
+
+    // 🧠 Dacă e link Cloudinary, curățăm parametrii și forțăm HTTPS
+    if (image.includes("cloudinary.com")) {
+      image = image.split("?")[0].replace("http://", "https://");
+    }
 
     const title = listing.title || "Anunț imobiliar din Oltenița";
     const desc =
@@ -98,16 +106,7 @@ app.get("/share/:id", async (req, res) => {
 
     const shareUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
-    // Detectăm crawler-ul Facebook
-    const ua = req.headers["user-agent"] || "";
-    const isFacebookBot =
-      ua.includes("facebookexternalhit") || ua.includes("Facebot");
-
-    if (!isFacebookBot) {
-      return res.redirect(302, shareUrl);
-    }
-
-    // ✅ HTML complet pentru Facebook
+    // ✅ HTML complet pentru Facebook (servește corect meta-tagurile)
     const html = `
       <!DOCTYPE html>
       <html lang="ro">
@@ -118,6 +117,7 @@ app.get("/share/:id", async (req, res) => {
 
           <link rel="canonical" href="${shareUrl}" />
 
+          <!-- Open Graph -->
           <meta property="og:title" content="${title}" />
           <meta property="og:description" content="${desc}" />
           <meta property="og:image" content="${image}" />
@@ -125,6 +125,7 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
 
+          <!-- Twitter -->
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="${title}" />
           <meta name="twitter:description" content="${desc}" />
