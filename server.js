@@ -113,6 +113,9 @@ app.get("/share/:id", async (req, res) => {
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>${title}</title>
 
+          <!-- Canonical -->
+          <link rel="canonical" href="${shareUrl}" />
+
           <!-- Open Graph -->
           <meta property="og:title" content="${title}" />
           <meta property="og:description" content="${desc}" />
