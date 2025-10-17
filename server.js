@@ -89,6 +89,10 @@ app.get("/share/:id", async (req, res) => {
       listing.images?.[0] ||
       listing.imageUrl ||
       "https://oltenitaimobiliare.ro/preview.jpg";
+    // 💡 Forțăm HTTPS direct către Cloudinary, fără parametri extra
+    if (image.includes("cloudinary.com")) {
+      image = image.split("?")[0].replace("/upload/", "/upload/f_auto,q_auto/");
+   }
 
     const title = listing.title || "Anunț imobiliar din Oltenița";
     const desc =
