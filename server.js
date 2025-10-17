@@ -93,9 +93,11 @@ app.get("/share/:id", async (req, res) => {
       listing.imageUrl ||
       "https://oltenitaimobiliare.ro/preview.jpg";
 
-    // 💡 Forțăm HTTPS direct către Cloudinary, fără parametri extra
+    // 💡 Asigurăm un URL complet static JPG 1200x630 pentru Facebook
     if (image.includes("cloudinary.com")) {
-      image = image.split("?")[0].replace("/upload/", "/upload/w_1200,h_630,c_fill,f_jpg,q_90/");
+      image = image
+        .split("?")[0]
+        .replace("/upload/", "/upload/w_1200,h_630,c_fill,f_jpg,q_90/");
     }
 
     const title = listing.title || "Anunț imobiliar din Oltenița";
@@ -139,7 +141,7 @@ app.get("/share/:id", async (req, res) => {
           <meta name="twitter:description" content="${desc}" />
           <meta name="twitter:image" content="${image}" />
 
-          <!-- Redirecționare automată pentru utilizatorii reali -->
+          <!-- Redirecționare automată -->
           <meta http-equiv="refresh" content="1.5; url=${shareUrl}" />
         </head>
         <body style="font-family:sans-serif;text-align:center;margin-top:60px;">
