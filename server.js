@@ -95,7 +95,7 @@ app.get("/share/:id", async (req, res) => {
 
     // 💡 Forțăm HTTPS direct către Cloudinary, fără parametri extra
     if (image.includes("cloudinary.com")) {
-      image = image.split("?")[0].replace("/upload/", "/upload/f_auto,q_auto/");
+      image = image.split("?")[0].replace("/upload/", "/upload/w_1200,h_630,c_fill,f_jpg,q_90/");
     }
 
     const title = listing.title || "Anunț imobiliar din Oltenița";
