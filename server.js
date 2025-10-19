@@ -74,7 +74,7 @@ app.use("/api/contact", contactRoutes);
 console.log("✔ Rute Stripe + Listings montate");
 
 /* =======================================================
-   🟦 Pagină specială pentru distribuire Facebook (Open Graph)
+   🟦 Distribuire Facebook (Open Graph + redirect curat)
 ======================================================= */
 app.get("/share/:id", async (req, res) => {
   try {
@@ -88,13 +88,12 @@ app.get("/share/:id", async (req, res) => {
         .send("<h1>Anunțul nu a fost găsit</h1><p>Oltenița Imobiliare</p>");
     }
 
-    // 🖼️ Folosim imaginea reală din Cloudinary (dacă există)
+    // 🖼️ Imagine principală (Cloudinary sau fallback)
     let image =
       listing.images?.[0] ||
       listing.imageUrl ||
       "https://oltenitaimobiliare.ro/preview.jpg";
 
-    // 🧠 Dacă e link Cloudinary, curățăm parametrii și forțăm HTTPS
     if (image.includes("cloudinary.com")) {
       image = image.split("?")[0].replace("http://", "https://");
     }
@@ -104,9 +103,10 @@ app.get("/share/:id", async (req, res) => {
       listing.description?.substring(0, 160) ||
       "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
 
-    const shareUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
+    // ✅ Link final real (domeniul principal)
+    const finalUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}?utm=facebook`;
 
-    // ✅ HTML complet pentru Facebook (servește corect meta-tagurile)
+    // ✅ HTML complet pentru Facebook (meta-taguri OG)
     const html = `
       <!DOCTYPE html>
       <html lang="ro">
@@ -115,13 +115,13 @@ app.get("/share/:id", async (req, res) => {
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>${title}</title>
 
-          <link rel="canonical" href="${shareUrl}" />
+          <link rel="canonical" href="${finalUrl}" />
 
           <!-- Open Graph -->
           <meta property="og:title" content="${title}" />
           <meta property="og:description" content="${desc}" />
           <meta property="og:image" content="${image}" />
-          <meta property="og:url" content="${shareUrl}" />
+          <meta property="og:url" content="${finalUrl}" />
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
 
@@ -131,13 +131,14 @@ app.get("/share/:id", async (req, res) => {
           <meta name="twitter:description" content="${desc}" />
           <meta name="twitter:image" content="${image}" />
 
-          <meta http-equiv="refresh" content="1.5; url=${shareUrl}" />
+          <!-- Redirect automat -->
+          <meta http-equiv="refresh" content="1.8; url=${finalUrl}" />
         </head>
         <body style="font-family:sans-serif;text-align:center;margin-top:60px;">
           <h2 style="color:#0a58ca;">${title}</h2>
           <p style="max-width:600px;margin:10px auto;">${desc}</p>
           <p>
-            <a href="${shareUrl}" style="color:#0a58ca;font-weight:bold;text-decoration:none;">
+            <a href="${finalUrl}" style="color:#0a58ca;font-weight:bold;text-decoration:none;">
               👉 Vezi anunțul complet pe Oltenița Imobiliare
             </a>
           </p>
