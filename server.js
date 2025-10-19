@@ -89,19 +89,22 @@ app.get("/share/:id", async (req, res) => {
     }
 
     // 🖼️ Imagine principală (Cloudinary sau fallback)
-    let image =
-      listing.images?.[0] ||
-      listing.imageUrl ||
-      "https://oltenitaimobiliare.ro/preview.jpg";
+    let image = listing.images?.[0] || listing.imageUrl || "";
 
-    // 🧠 Dacă e link Cloudinary, curățăm parametrii și forțăm HTTPS
-    if (image.includes("cloudinary.com")) {
+    // 🧠 Dacă e imagine Cloudinary, curățăm și forțăm format JPEG (Facebook nu acceptă WebP)
+    if (image && image.includes("cloudinary.com")) {
       image = image.split("?")[0].replace("http://", "https://");
+
+      // Cloudinary: convertim orice imagine (webp, avif etc.) în JPG
+      if (image.includes("/upload/")) {
+        image = image.replace("/upload/", "/upload/f_jpg,q_auto/");
+      }
     }
 
-    // 🟨 Forțăm format JPEG pentru Facebook (Cloudinary servește altfel WebP)
-    if (image.includes("/upload/")) {
-      image = image.replace("/upload/", "/upload/f_jpg,q_auto/");
+    // 🩶 Dacă nu există imagine validă, folosim fallback Cloudinary JPEG
+    if (!image) {
+      image =
+        "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto/v1739912345/preview_oltenita.jpg";
     }
 
     const title = listing.title || "Anunț imobiliar din Oltenița";
