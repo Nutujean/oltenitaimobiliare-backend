@@ -94,8 +94,14 @@ app.get("/share/:id", async (req, res) => {
       listing.imageUrl ||
       "https://oltenitaimobiliare.ro/preview.jpg";
 
+    // 🧠 Dacă e link Cloudinary, curățăm parametrii și forțăm HTTPS
     if (image.includes("cloudinary.com")) {
       image = image.split("?")[0].replace("http://", "https://");
+    }
+
+    // 🟨 Forțăm format JPEG pentru Facebook (Cloudinary servește altfel WebP)
+    if (image.includes("/upload/")) {
+      image = image.replace("/upload/", "/upload/f_jpg,q_auto/");
     }
 
     const title = listing.title || "Anunț imobiliar din Oltenița";
