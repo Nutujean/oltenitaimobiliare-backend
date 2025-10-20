@@ -102,7 +102,8 @@ app.get("/share/:id", async (req, res) => {
 
     // 🩶 Fallback JPEG Cloudinary valid
     if (!image) {
-      image = "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
+      image =
+        "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
     }
 
     const title = listing.title || "Anunț imobiliar din Oltenița";
@@ -123,9 +124,12 @@ app.get("/share/:id", async (req, res) => {
           <link rel="canonical" href="${finalUrl}" />
 
           <!-- Open Graph -->
+          <meta property="og:locale" content="ro_RO" />
           <meta property="og:title" content="${title}" />
           <meta property="og:description" content="${desc}" />
-          <meta property="og:image" content="https://oltenitaimobiliare-backend.onrender.com/proxy-image?url=${encodeURIComponent(image)}" />
+          <meta property="og:image" content="https://oltenitaimobiliare-backend.onrender.com/proxy-image.jpg?url=${encodeURIComponent(
+            image
+          )}" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:url" content="${finalUrl}" />
@@ -164,7 +168,7 @@ app.get("/share/:id", async (req, res) => {
 /* =======================================================
    🖼️ Proxy imagine pentru Facebook (forțare JPEG)
 ======================================================= */
-app.get("/proxy-image", async (req, res) => {
+app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
   try {
     const imageUrl = req.query.url;
     if (!imageUrl) return res.status(400).send("Lipsește URL-ul imaginii");
