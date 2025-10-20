@@ -4,7 +4,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import cron from "node-cron";
-import fetch from "node-fetch"; // pentru proxy imagine
+import fetch from "node-fetch";
+import https from "https";
 import Listing from "./models/Listing.js";
 
 // 🔹 Rute existente
@@ -81,6 +82,10 @@ app.get("/share/:id", async (req, res) => {
   try {
     console.log("📣 Generare pagină SHARE pentru ID:", req.params.id);
 
+    const ua = req.headers["user-agent"] || "";
+    const isBot = /facebookexternalhit|Twitterbot|Slackbot|WhatsApp/i.test(ua);
+    console.log("👁️ User-Agent:", ua);
+
     const listing = await Listing.findById(req.params.id).lean();
     if (!listing) {
       return res.status(404).send("<h1>Anunțul nu a fost găsit</h1>");
@@ -94,8 +99,7 @@ app.get("/share/:id", async (req, res) => {
       );
     } else if (!image) {
       image =
-        image =
-  "https://res.cloudinary.com/dql90lxy5/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1759264353/e3rkobxfqobzohrme4tu.jpg";
+        "https://res.cloudinary.com/dql90lxy5/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1759264353/e3rkobxfqobzohrme4tu.jpg";
     }
 
     const title = listing.title || "Anunț imobiliar în Oltenița";
@@ -104,16 +108,20 @@ app.get("/share/:id", async (req, res) => {
       "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
     const redirectUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(`<!DOCTYPE html>
-      <html lang="ro">
+    // 🧠 Dacă e bot (Facebook, Twitter, WhatsApp etc.) → servim doar meta OG static
+    if (isBot) {
+      console.log("🤖 Crawler detectat, servim OG tags fără redirect.");
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(`<!DOCTYPE html>
+        <html lang="ro">
         <head>
           <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>${title}</title>
-
-          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(image)}&v=5" />
-          <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(image)}&v=5" />
+          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
+            image
+          )}&v=6" />
+          <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
+            image
+          )}&v=6" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:image:type" content="image/jpeg" />
@@ -123,12 +131,33 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
           <meta property="og:locale" content="ro_RO" />
+        </head>
+        <body></body></html>`);
+    }
 
-          <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:title" content="${title}" />
-          <meta name="twitter:description" content="${desc}" />
-          <meta name="twitter:image" content="${image}" />
-
+    // 🧍‍ Vizitator uman → pagina normală cu redirect
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+      <html lang="ro">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>${title}</title>
+          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
+            image
+          )}&v=6" />
+          <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
+            image
+          )}&v=6" />
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
+          <meta property="og:image:type" content="image/jpeg" />
+          <meta property="og:title" content="${title}" />
+          <meta property="og:description" content="${desc}" />
+          <meta property="og:url" content="${redirectUrl}" />
+          <meta property="og:site_name" content="Oltenița Imobiliare" />
+          <meta property="og:type" content="article" />
+          <meta property="og:locale" content="ro_RO" />
           <meta http-equiv="refresh" content="1; url=${redirectUrl}" />
         </head>
         <body style="font-family:sans-serif;text-align:center;margin-top:50px;">
@@ -144,11 +173,9 @@ app.get("/share/:id", async (req, res) => {
 });
 
 /* =======================================================
-   🖼️ Proxy imagine pentru Facebook (fix final Cloudinary 404)
+   🖼️ Proxy imagine pentru Facebook (forțare JPEG)
 ======================================================= */
-import https from "https";
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
-
 app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
   try {
     const imageUrl = req.query.url;
@@ -183,15 +210,13 @@ app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
     res.setHeader("Cache-Control", "public, max-age=86400");
     res.send(buffer);
   } catch (err) {
-    console.error("❌ Eroare proxy imagine:", err.message);
+    console.error("❌ Eroare proxy imagine:", err);
     res.status(500).send("Eroare proxy imagine");
   }
 });
 
-
-
 /* =======================================================
-   🕒 CRON zilnic pentru dezactivarea automată a anunțurilor expirate
+   🕒 CRON zilnic pentru expirare automată
 ======================================================= */
 cron.schedule("0 2 * * *", async () => {
   try {
@@ -231,13 +256,11 @@ app.listen(PORT, () => {
 });
 
 /* =======================================================
-   🟢 Keep-alive intern (ping automat la backend)
+   🟢 Keep-alive intern
 ======================================================= */
 setInterval(async () => {
   try {
-    const https = await import("https");
     const url = "https://oltenitaimobiliare-backend.onrender.com/api/health";
-
     https.get(url, (res) => {
       console.log(`🔁 Keep-alive ping -> ${res.statusCode}`);
     }).on("error", (err) => {
@@ -246,4 +269,4 @@ setInterval(async () => {
   } catch (err) {
     console.error("❌ Eroare la keep-alive:", err.message);
   }
-}, 4 * 60 * 1000); // la fiecare 4 minute
+}, 4 * 60 * 1000);
