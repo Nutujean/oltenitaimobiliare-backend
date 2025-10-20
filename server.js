@@ -102,7 +102,7 @@ app.get("/share/:id", async (req, res) => {
 
     // 🩶 Fallback JPEG Cloudinary valid
     if (!image) {
-      image = "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/preview_oltenita.jpg";
+      image = "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
     }
 
     const title = listing.title || "Anunț imobiliar din Oltenița";
