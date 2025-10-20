@@ -217,7 +217,7 @@ app.listen(PORT, () => {
 /* =======================================================
    🟢 Keep-alive intern (ping automat la backend)
 ======================================================= */
-import https from "https";
+import * as https from "https";
 
 setInterval(() => {
   const url = "https://oltenitaimobiliare-backend.onrender.com/api/health";
