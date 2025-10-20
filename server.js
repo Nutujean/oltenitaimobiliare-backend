@@ -121,17 +121,18 @@ app.get("/share/:id", async (req, res) => {
           <title>${title}</title>
           <link rel="canonical" href="${finalUrl}" />
 
-          <meta property="og:locale" content="ro_RO" />
-          <meta property="og:title" content="${title}" />
-          <meta property="og:description" content="${desc}" />
           <meta property="og:image" content="https://oltenitaimobiliare-backend.onrender.com/proxy-image.jpg?url=${encodeURIComponent(
             image
           )}&v=2" />
+          <meta property="og:image:secure_url" content="${image}" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
+          <meta property="og:title" content="${title}" />
+          <meta property="og:description" content="${desc}" />
           <meta property="og:url" content="${finalUrl}" />
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
+          <meta property="og:locale" content="ro_RO" />
 
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="${title}" />
@@ -198,16 +199,19 @@ app.get("/fbshare/:id", async (req, res) => {
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>${title}</title>
 
-          <meta property="og:locale" content="ro_RO" />
-          <meta property="og:type" content="article" />
-          <meta property="og:title" content="${title}" />
-          <meta property="og:description" content="${desc}" />
+          <!-- ✅ Open Graph perfect ordonat -->
           <meta property="og:image" content="${image}" />
+          <meta property="og:image:secure_url" content="${image}" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
+          <meta property="og:title" content="${title}" />
+          <meta property="og:description" content="${desc}" />
           <meta property="og:url" content="${redirectUrl}" />
           <meta property="og:site_name" content="Oltenița Imobiliare" />
+          <meta property="og:type" content="article" />
+          <meta property="og:locale" content="ro_RO" />
 
+          <!-- ✅ Twitter Card -->
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="${title}" />
           <meta name="twitter:description" content="${desc}" />
