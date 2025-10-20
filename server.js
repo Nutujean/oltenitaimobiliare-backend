@@ -143,30 +143,42 @@ app.get("/share/:id", async (req, res) => {
 });
 
 /* =======================================================
-   🖼️ Proxy imagine pentru Facebook (forțare JPEG)
+   🖼️ Proxy imagine pentru Facebook (forțare JPEG + antete complete)
 ======================================================= */
 app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
   try {
     const imageUrl = req.query.url;
     if (!imageUrl) return res.status(400).send("Lipsește URL-ul imaginii");
 
-    const response = await fetch(imageUrl, {
-  headers: {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
-  }
-});
-    if (!response.ok) return res.status(404).send("Imagine negăsită");
+    // 🔒 Asigură HTTPS complet
+    const cleanUrl = imageUrl.replace(/^http:\/\//, "https://");
 
-    const buffer = await response.arrayBuffer();
+    // ⚙️ Solicitare cu antete complete (Cloudinary + FB compatibil)
+    const response = await fetch(cleanUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      },
+    });
 
-    res.setHeader("Content-Type", "image/jpeg");
+    if (!response.ok) {
+      console.warn("⚠️ Proxy fetch failed:", response.status, cleanUrl);
+      return res.status(404).send("Imagine negăsită");
+    }
+
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "public, max-age=86400");
-    res.send(Buffer.from(buffer));
+    res.send(buffer);
   } catch (err) {
     console.error("❌ Eroare proxy imagine:", err);
     res.status(500).send("Eroare proxy imagine");
   }
 });
+
 
 /* =======================================================
    🕒 CRON zilnic pentru dezactivarea automată a anunțurilor expirate
