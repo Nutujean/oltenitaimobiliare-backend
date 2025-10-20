@@ -96,7 +96,10 @@ app.get("/share/:id", async (req, res) => {
     if (image && image.includes("cloudinary.com")) {
       image = image.split("?")[0].replace("http://", "https://");
       if (image.includes("/upload/")) {
-        image = image.replace("/upload/", "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/");
+        image = image.replace(
+          "/upload/",
+          "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
+        );
       }
     }
 
@@ -129,7 +132,7 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:description" content="${desc}" />
           <meta property="og:image" content="https://oltenitaimobiliare-backend.onrender.com/proxy-image.jpg?url=${encodeURIComponent(
             image
-          )}" />
+          )}&v=2" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:url" content="${finalUrl}" />
@@ -176,7 +179,22 @@ app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
     const response = await fetch(imageUrl);
     if (!response.ok) return res.status(404).send("Imagine negăsită");
 
-    const buffer = await response.arrayBuffer();
+    const contentType = response.headers.get("content-type") || "";
+
+    // 🧠 Dacă nu e JPEG, forțăm conversia prin Cloudinary
+    let finalUrl = imageUrl;
+    if (!contentType.includes("jpeg") && imageUrl.includes("/upload/")) {
+      finalUrl = imageUrl.replace(
+        "/upload/",
+        "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
+      );
+      console.log("🔁 Convertit în JPEG:", finalUrl);
+    }
+
+    const jpegResp = await fetch(finalUrl);
+    if (!jpegResp.ok) return res.status(404).send("Imagine negăsită");
+
+    const buffer = await jpegResp.arrayBuffer();
 
     res.setHeader("Content-Type", "image/jpeg");
     res.setHeader("Cache-Control", "public, max-age=86400");
