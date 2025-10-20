@@ -130,6 +130,8 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:description" content="${desc}" />
           <meta property="og:image" content="https://oltenitaimobiliare-backend.onrender.com/proxy-image?url=${encodeURIComponent(
             image
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
           )}" />
           <meta property="og:url" content="${finalUrl}" />
           <meta property="og:site_name" content="Oltenița Imobiliare" />
