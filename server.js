@@ -111,8 +111,8 @@ app.get("/share/:id", async (req, res) => {
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>${title}</title>
 
-          <meta property="og:image" content="${image}?v=2" />
-          <meta property="og:image:secure_url" content="${image}" />
+          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(image)}&v=2" />
+          <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(image)}&v=2" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:image:type" content="image/jpeg" />
