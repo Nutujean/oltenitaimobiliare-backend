@@ -143,27 +143,33 @@ app.get("/share/:id", async (req, res) => {
 });
 
 /* =======================================================
-   🖼️ Proxy imagine pentru Facebook (forțare JPEG + antete complete)
+   🖼️ Proxy imagine pentru Facebook (versiune completă, cu loguri)
 ======================================================= */
 app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
   try {
     const imageUrl = req.query.url;
-    if (!imageUrl) return res.status(400).send("Lipsește URL-ul imaginii");
+    if (!imageUrl) {
+      console.warn("⚠️ Lipsă parametru ?url=");
+      return res.status(400).send("Lipsește URL-ul imaginii");
+    }
 
-    // 🔒 Asigură HTTPS complet
-    const cleanUrl = imageUrl.replace(/^http:\/\//, "https://");
+    // Normalizează și repară URL-ul
+    const cleanUrl = decodeURIComponent(imageUrl).replace(/^http:\/\//, "https://");
+    console.log("🌍 Proxy fetch către:", cleanUrl);
 
-    // ⚙️ Solicitare cu antete complete (Cloudinary + FB compatibil)
     const response = await fetch(cleanUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
         Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        Referer: "https://share.oltenitaimobiliare.ro/",
       },
     });
 
+    console.log("📥 Răspuns Cloudinary:", response.status, response.statusText);
+
     if (!response.ok) {
-      console.warn("⚠️ Proxy fetch failed:", response.status, cleanUrl);
       return res.status(404).send("Imagine negăsită");
     }
 
@@ -174,10 +180,11 @@ app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
     res.setHeader("Cache-Control", "public, max-age=86400");
     res.send(buffer);
   } catch (err) {
-    console.error("❌ Eroare proxy imagine:", err);
+    console.error("❌ Eroare proxy imagine:", err.message);
     res.status(500).send("Eroare proxy imagine");
   }
 });
+
 
 
 /* =======================================================
