@@ -143,8 +143,11 @@ app.get("/share/:id", async (req, res) => {
 });
 
 /* =======================================================
-   🖼️ Proxy imagine pentru Facebook (versiune completă, cu loguri)
+   🖼️ Proxy imagine pentru Facebook (fix final Cloudinary 404)
 ======================================================= */
+import https from "https";
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+
 app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
   try {
     const imageUrl = req.query.url;
@@ -153,16 +156,15 @@ app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
       return res.status(400).send("Lipsește URL-ul imaginii");
     }
 
-    // Normalizează și repară URL-ul
     const cleanUrl = decodeURIComponent(imageUrl).replace(/^http:\/\//, "https://");
     console.log("🌍 Proxy fetch către:", cleanUrl);
 
     const response = await fetch(cleanUrl, {
+      agent: httpsAgent,
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
         Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
         Referer: "https://share.oltenitaimobiliare.ro/",
       },
     });
