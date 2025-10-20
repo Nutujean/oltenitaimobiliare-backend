@@ -4,6 +4,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import cron from "node-cron";
+import fetch from "node-fetch"; // 🆕 pentru proxy imagine
 import Listing from "./models/Listing.js";
 
 // 🔹 Rute existente
@@ -94,8 +95,6 @@ app.get("/share/:id", async (req, res) => {
     // 🧠 Dacă e imagine Cloudinary, curățăm și forțăm format JPEG (Facebook nu acceptă WebP)
     if (image && image.includes("cloudinary.com")) {
       image = image.split("?")[0].replace("http://", "https://");
-
-      // Cloudinary: convertim orice imagine (webp, avif etc.) în JPG
       if (image.includes("/upload/")) {
         image = image.replace("/upload/", "/upload/f_jpg,q_auto/");
       }
@@ -129,7 +128,9 @@ app.get("/share/:id", async (req, res) => {
           <!-- Open Graph -->
           <meta property="og:title" content="${title}" />
           <meta property="og:description" content="${desc}" />
-          <meta property="og:image" content="${image}" />
+          <meta property="og:image" content="https://oltenitaimobiliare-backend.onrender.com/proxy-image?url=${encodeURIComponent(
+            image
+          )}" />
           <meta property="og:url" content="${finalUrl}" />
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
@@ -164,6 +165,28 @@ app.get("/share/:id", async (req, res) => {
   } catch (err) {
     console.error("❌ Eroare la generarea paginii de share:", err);
     res.status(500).send("Eroare internă server");
+  }
+});
+
+/* =======================================================
+   🖼️ Proxy imagine pentru Facebook (forțare JPEG)
+======================================================= */
+app.get("/proxy-image", async (req, res) => {
+  try {
+    const imageUrl = req.query.url;
+    if (!imageUrl) return res.status(400).send("Lipsește URL-ul imaginii");
+
+    const response = await fetch(imageUrl);
+    if (!response.ok) return res.status(404).send("Imagine negăsită");
+
+    const buffer = await response.arrayBuffer();
+
+    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.error("❌ Eroare proxy imagine:", err);
+    res.status(500).send("Eroare proxy imagine");
   }
 });
 
