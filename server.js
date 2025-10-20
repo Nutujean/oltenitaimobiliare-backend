@@ -94,7 +94,8 @@ app.get("/share/:id", async (req, res) => {
       );
     } else if (!image) {
       image =
-        "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
+        image =
+  "https://res.cloudinary.com/dql90lxy5/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1759264353/e3rkobxfqobzohrme4tu.jpg";
     }
 
     const title = listing.title || "Anunț imobiliar în Oltenița";
