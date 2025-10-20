@@ -108,7 +108,6 @@ app.get("/share/:id", async (req, res) => {
       "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
     const redirectUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
-    // 🧠 Dacă e bot (Facebook, Twitter, WhatsApp etc.) → servim OG meta direct
     if (isBot) {
       console.log("🤖 Crawler detectat, servim OG tags fără redirect.");
       res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -118,10 +117,10 @@ app.get("/share/:id", async (req, res) => {
           <meta charset="utf-8" />
           <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
             image
-          )}&v=6" />
+          )}&v=7" />
           <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
             image
-          )}&v=6" />
+          )}&v=7" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:image:type" content="image/jpeg" />
@@ -146,10 +145,10 @@ app.get("/share/:id", async (req, res) => {
           <title>${title}</title>
           <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
             image
-          )}&v=6" />
+          )}&v=7" />
           <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
             image
-          )}&v=6" />
+          )}&v=7" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:image:type" content="image/jpeg" />
@@ -175,44 +174,53 @@ app.get("/share/:id", async (req, res) => {
 });
 
 /* =======================================================
-   🖼️ Proxy imagine pentru Facebook
+   🖼️ Proxy imagine pentru Facebook (versiune stabilizată)
 ======================================================= */
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+
 app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
   try {
     const imageUrl = req.query.url;
-    if (!imageUrl) {
-      console.warn("⚠️ Lipsă parametru ?url=");
-      return res.status(400).send("Lipsește URL-ul imaginii");
-    }
+    if (!imageUrl) return res.status(400).send("Lipsește URL-ul imaginii");
 
     const cleanUrl = decodeURIComponent(imageUrl).replace(/^http:\/\//, "https://");
-    console.log("🌍 Proxy fetch către:", cleanUrl);
+    console.log("🌍 Fetch imagine pentru OG:", cleanUrl);
+
+    // ✅ Timeout + user-agent special
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
 
     const response = await fetch(cleanUrl, {
       agent: httpsAgent,
+      signal: controller.signal,
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        Referer: "https://share.oltenitaimobiliare.ro/",
+          "facebookexternalhit/1.1 (+https://www.facebook.com/externalhit_uatext.php)",
+        Accept: "image/jpeg,image/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
       },
     });
 
-    console.log("📥 Răspuns Cloudinary:", response.status, response.statusText);
+    clearTimeout(timeout);
 
     if (!response.ok) {
+      console.warn("⚠️ Imagine negăsită:", response.status, response.statusText);
       return res.status(404).send("Imagine negăsită");
     }
 
-    const contentType = response.headers.get("content-type") || "image/jpeg";
     const buffer = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get("content-type") || "image/jpeg";
 
+    res.status(200);
     res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("Content-Length", buffer.length);
     res.send(buffer);
   } catch (err) {
-    console.error("❌ Eroare proxy imagine:", err);
+    console.error("❌ Eroare proxy imagine:", err.name, err.message);
+    if (err.name === "AbortError") {
+      return res.status(504).send("Timeout la descărcarea imaginii");
+    }
     res.status(500).send("Eroare proxy imagine");
   }
 });
@@ -260,15 +268,11 @@ app.listen(PORT, () => {
 /* =======================================================
    🟢 Keep-alive intern
 ======================================================= */
-setInterval(async () => {
-  try {
-    const url = "https://oltenitaimobiliare-backend.onrender.com/api/health";
-    https.get(url, (res) => {
-      console.log(`🔁 Keep-alive ping -> ${res.statusCode}`);
-    }).on("error", (err) => {
-      console.error("❌ Keep-alive error:", err.message);
-    });
-  } catch (err) {
-    console.error("❌ Eroare la keep-alive:", err.message);
-  }
+setInterval(() => {
+  const url = "https://oltenitaimobiliare-backend.onrender.com/api/health";
+  https.get(url, (res) => {
+    console.log(`🔁 Keep-alive ping -> ${res.statusCode}`);
+  }).on("error", (err) => {
+    console.error("❌ Keep-alive error:", err.message);
+  });
 }, 4 * 60 * 1000);
