@@ -139,9 +139,6 @@ app.get("/share/:id", async (req, res) => {
           <meta name="twitter:title" content="${title}" />
           <meta name="twitter:description" content="${desc}" />
           <meta name="twitter:image" content="${image}" />
-
-          <!-- Redirect automat -->
-          <meta http-equiv="refresh" content="1.8; url=${finalUrl}" />
         </head>
         <body style="font-family:sans-serif;text-align:center;margin-top:60px;">
           <h2 style="color:#0a58ca;">${title}</h2>
@@ -151,6 +148,13 @@ app.get("/share/:id", async (req, res) => {
               👉 Vezi anunțul complet pe Oltenița Imobiliare
             </a>
           </p>
+
+          <!-- Facebook are nevoie de timp să preia meta-tagurile -->
+          <script>
+            setTimeout(() => {
+              window.location.href = "${finalUrl}";
+            }, 2500);
+          </script>
         </body>
       </html>
     `;
