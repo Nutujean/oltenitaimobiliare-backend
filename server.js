@@ -117,10 +117,10 @@ app.get("/share/:id", async (req, res) => {
           <meta charset="utf-8" />
           <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
             image
-          )}&v=7" />
+          )}&v=8" />
           <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
             image
-          )}&v=7" />
+          )}&v=8" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:image:type" content="image/jpeg" />
@@ -130,7 +130,6 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
           <meta property="og:locale" content="ro_RO" />
-          <meta property="fb:app_id" content="987654321000111" />
         </head>
         <body></body></html>`);
     }
@@ -145,10 +144,10 @@ app.get("/share/:id", async (req, res) => {
           <title>${title}</title>
           <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
             image
-          )}&v=7" />
+          )}&v=8" />
           <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
             image
-          )}&v=7" />
+          )}&v=8" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:image:type" content="image/jpeg" />
@@ -158,7 +157,6 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
           <meta property="og:locale" content="ro_RO" />
-          <meta property="fb:app_id" content="987654321000111" />
           <meta http-equiv="refresh" content="1; url=${redirectUrl}" />
         </head>
         <body style="font-family:sans-serif;text-align:center;margin-top:50px;">
@@ -174,7 +172,7 @@ app.get("/share/:id", async (req, res) => {
 });
 
 /* =======================================================
-   🖼️ Proxy imagine pentru Facebook (versiune stabilizată)
+   🖼️ Proxy imagine stabil
 ======================================================= */
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
@@ -186,7 +184,6 @@ app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
     const cleanUrl = decodeURIComponent(imageUrl).replace(/^http:\/\//, "https://");
     console.log("🌍 Fetch imagine pentru OG:", cleanUrl);
 
-    // ✅ Timeout + user-agent special
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
 
