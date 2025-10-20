@@ -121,7 +121,7 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:title" content="${title}" />
           <meta property="og:description" content="${desc}" />
           <meta property="og:url" content="${redirectUrl}" />
-          <meta property="og:image" content="${image}?v=${Date.now()}" />
+          <meta property="og:image" content="${image}?v=2" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:image:type" content="image/jpeg" />
@@ -214,5 +214,20 @@ app.use((req, res) => {
 /* ---------------- Start ---------------- */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
+/* =======================================================
+   🟢 Keep-alive intern (ping automat la backend)
+======================================================= */
+import https from "https";
+
+setInterval(() => {
+  const url = "https://oltenitaimobiliare-backend.onrender.com/api/health";
+  https
+    .get(url, (res) => {
+      console.log(`🔁 Keep-alive ping -> ${res.statusCode}`);
+    })
+    .on("error", (err) => {
+      console.error("❌ Keep-alive error:", err.message);
+    });
+}, 4 * 60 * 1000); // la fiecare 4 minute
   console.log(`🚀 Server pornit pe portul ${PORT}`);
 });
