@@ -108,7 +108,7 @@ app.get("/share/:id", async (req, res) => {
       "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
     const redirectUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
-    // 🧠 Dacă e bot (Facebook, Twitter, WhatsApp etc.) → servim doar meta OG static
+    // 🧠 Dacă e bot (Facebook, Twitter, WhatsApp etc.) → servim OG meta direct
     if (isBot) {
       console.log("🤖 Crawler detectat, servim OG tags fără redirect.");
       res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -131,6 +131,7 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
           <meta property="og:locale" content="ro_RO" />
+          <meta property="fb:app_id" content="987654321000111" />
         </head>
         <body></body></html>`);
     }
@@ -158,6 +159,7 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
           <meta property="og:locale" content="ro_RO" />
+          <meta property="fb:app_id" content="987654321000111" />
           <meta http-equiv="refresh" content="1; url=${redirectUrl}" />
         </head>
         <body style="font-family:sans-serif;text-align:center;margin-top:50px;">
@@ -173,7 +175,7 @@ app.get("/share/:id", async (req, res) => {
 });
 
 /* =======================================================
-   🖼️ Proxy imagine pentru Facebook (forțare JPEG)
+   🖼️ Proxy imagine pentru Facebook
 ======================================================= */
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
