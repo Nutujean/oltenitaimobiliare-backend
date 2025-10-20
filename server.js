@@ -150,7 +150,11 @@ app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
     const imageUrl = req.query.url;
     if (!imageUrl) return res.status(400).send("Lipsește URL-ul imaginii");
 
-    const response = await fetch(imageUrl);
+    const response = await fetch(imageUrl, {
+  headers: {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
+  }
+});
     if (!response.ok) return res.status(404).send("Imagine negăsită");
 
     const buffer = await response.arrayBuffer();
