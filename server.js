@@ -75,31 +75,25 @@ app.use("/api/contact", contactRoutes);
 console.log("✔ Rute Stripe + Listings montate");
 
 /* =======================================================
-   🟦 Distribuire Facebook (Open Graph + redirect curat)
+   🟦 Ruta unică de SHARE pentru Facebook (OG + redirect)
 ======================================================= */
 app.get("/share/:id", async (req, res) => {
   try {
-    console.log("🔗 Cerere share pentru ID:", req.params.id);
+    console.log("📣 Generare pagină SHARE pentru ID:", req.params.id);
 
     const listing = await Listing.findById(req.params.id).lean();
     if (!listing) {
-      console.warn("⚠️ Anunț negăsit:", req.params.id);
-      return res
-        .status(404)
-        .send("<h1>Anunțul nu a fost găsit</h1><p>Oltenița Imobiliare</p>");
+      return res.status(404).send("<h1>Anunțul nu a fost găsit</h1>");
     }
 
+    // Imagine principală
     let image = listing.images?.[0] || listing.imageUrl || "";
     if (image && image.includes("cloudinary.com")) {
-      image = image.split("?")[0].replace("http://", "https://");
-      if (image.includes("/upload/")) {
-        image = image.replace(
-          "/upload/",
-          "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
-        );
-      }
+      image = image.replace(
+        "/upload/",
+        "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
+      );
     }
-
     if (!image) {
       image =
         "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
@@ -109,9 +103,9 @@ app.get("/share/:id", async (req, res) => {
     const desc =
       listing.description?.substring(0, 160) ||
       "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
+    const redirectUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}?utm=facebook`;
 
-    const finalUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}?utm=facebook`;
-
+    // HTML OG + redirect
     const html = `
       <!DOCTYPE html>
       <html lang="ro">
@@ -119,33 +113,33 @@ app.get("/share/:id", async (req, res) => {
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>${title}</title>
-          <link rel="canonical" href="${finalUrl}" />
+          <link rel="canonical" href="${redirectUrl}" />
 
-          <meta property="og:image" content="https://oltenitaimobiliare-backend.onrender.com/proxy-image.jpg?url=${encodeURIComponent(
-            image
-          )}&v=2" />
-          <meta property="og:image:secure_url" content="${image}" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
+          <!-- ✅ Open Graph -->
+          <meta property="og:type" content="article" />
+          <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:title" content="${title}" />
           <meta property="og:description" content="${desc}" />
-          <meta property="og:url" content="${finalUrl}" />
-          <meta property="og:site_name" content="Oltenița Imobiliare" />
-          <meta property="og:type" content="article" />
+          <meta property="og:url" content="${redirectUrl}" />
+          <meta property="og:image" content="${image}?v=${Date.now()}" />
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
+          <meta property="og:image:type" content="image/jpeg" />
           <meta property="og:locale" content="ro_RO" />
 
+          <!-- ✅ Twitter -->
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="${title}" />
           <meta name="twitter:description" content="${desc}" />
           <meta name="twitter:image" content="${image}" />
 
-          <meta http-equiv="refresh" content="2; url=${finalUrl}" />
+          <meta http-equiv="refresh" content="1; url=${redirectUrl}" />
         </head>
         <body style="font-family:sans-serif;text-align:center;margin-top:60px;">
           <h2 style="color:#0a58ca;">${title}</h2>
           <p style="max-width:600px;margin:10px auto;">${desc}</p>
           <p>
-            <a href="${finalUrl}" style="color:#0a58ca;font-weight:bold;text-decoration:none;">
+            <a href="${redirectUrl}" style="color:#0a58ca;font-weight:bold;text-decoration:none;">
               👉 Vezi anunțul complet pe Oltenița Imobiliare
             </a>
           </p>
@@ -157,77 +151,6 @@ app.get("/share/:id", async (req, res) => {
     res.send(html);
   } catch (err) {
     console.error("❌ Eroare la generarea paginii de share:", err);
-    res.status(500).send("Eroare internă server");
-  }
-});
-
-/* =======================================================
-   ✅ Rută dedicată pentru Facebook (HTML pur fără React)
-======================================================= */
-app.get("/fbshare/:id", async (req, res) => {
-  try {
-    console.log("📣 FB Share pentru ID:", req.params.id);
-
-    const listing = await Listing.findById(req.params.id).lean();
-    if (!listing) {
-      return res.status(404).send("<h1>Anunțul nu a fost găsit</h1>");
-    }
-
-    let image = listing.images?.[0] || listing.imageUrl || "";
-    if (image.includes("cloudinary.com")) {
-      image = image.replace(
-        "/upload/",
-        "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
-      );
-    } else if (!image) {
-      image =
-        "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
-    }
-
-    const title = listing.title || "Anunț imobiliar în Oltenița";
-    const desc =
-      listing.description?.substring(0, 160) ||
-      "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
-    const redirectUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
-
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(`
-      <!DOCTYPE html>
-      <html lang="ro">
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>${title}</title>
-
-          <!-- ✅ Open Graph perfect ordonat -->
-          <meta property="og:image" content="${image}?v=${Date.now()}" />
-          <meta property="og:image:secure_url" content="${image}" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-          <meta property="og:title" content="${title}" />
-          <meta property="og:description" content="${desc}" />
-          <meta property="og:url" content="${redirectUrl}" />
-          <meta property="og:site_name" content="Oltenița Imobiliare" />
-          <meta property="og:type" content="article" />
-          <meta property="og:locale" content="ro_RO" />
-
-          <!-- ✅ Twitter Card -->
-          <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:title" content="${title}" />
-          <meta name="twitter:description" content="${desc}" />
-          <meta name="twitter:image" content="${image}" />
-
-          <meta http-equiv="refresh" content="1; url=${redirectUrl}" />
-        </head>
-        <body style="font-family:sans-serif;text-align:center;margin-top:50px;">
-          <h2>${title}</h2>
-          <p>${desc}</p>
-          <a href="${redirectUrl}">👉 Vezi anunțul complet pe Oltenița Imobiliare</a>
-        </body>
-      </html>
-    `);
-  } catch (err) {
-    console.error("❌ Eroare la /fbshare:", err);
     res.status(500).send("Eroare internă server");
   }
 });
