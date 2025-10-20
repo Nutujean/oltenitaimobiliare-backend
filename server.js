@@ -200,7 +200,7 @@ app.get("/fbshare/:id", async (req, res) => {
           <title>${title}</title>
 
           <!-- ✅ Open Graph perfect ordonat -->
-          <meta property="og:image" content="${image}" />
+          <meta property="og:image" content="${image}?v=${Date.now()}" />
           <meta property="og:image:secure_url" content="${image}" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
