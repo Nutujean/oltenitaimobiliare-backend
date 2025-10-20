@@ -4,7 +4,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import cron from "node-cron";
-import fetch from "node-fetch"; // 🆕 pentru proxy imagine
+import fetch from "node-fetch"; // pentru proxy imagine
 import Listing from "./models/Listing.js";
 
 // 🔹 Rute existente
@@ -89,10 +89,7 @@ app.get("/share/:id", async (req, res) => {
         .send("<h1>Anunțul nu a fost găsit</h1><p>Oltenița Imobiliare</p>");
     }
 
-    // 🖼️ Imagine principală (Cloudinary sau fallback)
     let image = listing.images?.[0] || listing.imageUrl || "";
-
-    // 🧠 Curățare link Cloudinary și forțare JPEG
     if (image && image.includes("cloudinary.com")) {
       image = image.split("?")[0].replace("http://", "https://");
       if (image.includes("/upload/")) {
@@ -103,7 +100,6 @@ app.get("/share/:id", async (req, res) => {
       }
     }
 
-    // 🩶 Fallback JPEG Cloudinary valid
     if (!image) {
       image =
         "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
@@ -123,10 +119,8 @@ app.get("/share/:id", async (req, res) => {
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>${title}</title>
-
           <link rel="canonical" href="${finalUrl}" />
 
-          <!-- Open Graph -->
           <meta property="og:locale" content="ro_RO" />
           <meta property="og:title" content="${title}" />
           <meta property="og:description" content="${desc}" />
@@ -139,13 +133,11 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
 
-          <!-- Twitter -->
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="${title}" />
           <meta name="twitter:description" content="${desc}" />
           <meta name="twitter:image" content="${image}" />
 
-          <!-- Redirect automat -->
           <meta http-equiv="refresh" content="2; url=${finalUrl}" />
         </head>
         <body style="font-family:sans-serif;text-align:center;margin-top:60px;">
@@ -169,6 +161,74 @@ app.get("/share/:id", async (req, res) => {
 });
 
 /* =======================================================
+   ✅ Rută dedicată pentru Facebook (HTML pur fără React)
+======================================================= */
+app.get("/fbshare/:id", async (req, res) => {
+  try {
+    console.log("📣 FB Share pentru ID:", req.params.id);
+
+    const listing = await Listing.findById(req.params.id).lean();
+    if (!listing) {
+      return res.status(404).send("<h1>Anunțul nu a fost găsit</h1>");
+    }
+
+    let image = listing.images?.[0] || listing.imageUrl || "";
+    if (image.includes("cloudinary.com")) {
+      image = image.replace(
+        "/upload/",
+        "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
+      );
+    } else if (!image) {
+      image =
+        "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
+    }
+
+    const title = listing.title || "Anunț imobiliar în Oltenița";
+    const desc =
+      listing.description?.substring(0, 160) ||
+      "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
+    const redirectUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="ro">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>${title}</title>
+
+          <meta property="og:locale" content="ro_RO" />
+          <meta property="og:type" content="article" />
+          <meta property="og:title" content="${title}" />
+          <meta property="og:description" content="${desc}" />
+          <meta property="og:image" content="${image}" />
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
+          <meta property="og:url" content="${redirectUrl}" />
+          <meta property="og:site_name" content="Oltenița Imobiliare" />
+
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content="${title}" />
+          <meta name="twitter:description" content="${desc}" />
+          <meta name="twitter:image" content="${image}" />
+
+          <meta http-equiv="refresh" content="1; url=${redirectUrl}" />
+        </head>
+        <body style="font-family:sans-serif;text-align:center;margin-top:50px;">
+          <h2>${title}</h2>
+          <p>${desc}</p>
+          <a href="${redirectUrl}">👉 Vezi anunțul complet pe Oltenița Imobiliare</a>
+        </body>
+      </html>
+    `);
+  } catch (err) {
+    console.error("❌ Eroare la /fbshare:", err);
+    res.status(500).send("Eroare internă server");
+  }
+});
+
+/* =======================================================
    🖼️ Proxy imagine pentru Facebook (forțare JPEG)
 ======================================================= */
 app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
@@ -179,22 +239,7 @@ app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
     const response = await fetch(imageUrl);
     if (!response.ok) return res.status(404).send("Imagine negăsită");
 
-    const contentType = response.headers.get("content-type") || "";
-
-    // 🧠 Dacă nu e JPEG, forțăm conversia prin Cloudinary
-    let finalUrl = imageUrl;
-    if (!contentType.includes("jpeg") && imageUrl.includes("/upload/")) {
-      finalUrl = imageUrl.replace(
-        "/upload/",
-        "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
-      );
-      console.log("🔁 Convertit în JPEG:", finalUrl);
-    }
-
-    const jpegResp = await fetch(finalUrl);
-    if (!jpegResp.ok) return res.status(404).send("Imagine negăsită");
-
-    const buffer = await jpegResp.arrayBuffer();
+    const buffer = await response.arrayBuffer();
 
     res.setHeader("Content-Type", "image/jpeg");
     res.setHeader("Cache-Control", "public, max-age=86400");
