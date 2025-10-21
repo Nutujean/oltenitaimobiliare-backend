@@ -53,9 +53,10 @@ router.get("/share/:id", async (req, res) => {
       </head>
       <body>
         <script>
-          // După ce Facebook a citit meta-urile, redirecționează userul real
-          window.location.href = "${shareUrl}";
-        </script>
+           setTimeout(() => {
+             window.location.href = "${shareUrl}";
+           }, 1500); // 1.5 secunde - timp pentru ca Facebook să citească meta-tagurile
+         </script>
       </body>
       </html>
     `);
