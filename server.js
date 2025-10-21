@@ -112,8 +112,7 @@ app.get("/share/:id", async (req, res) => {
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>${title}</title>
 
-          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(image)}&v=2" />
-          <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(image)}&v=2" />
+          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image?url=${encodeURIComponent(image)}" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:image:type" content="image/jpeg" />
@@ -145,42 +144,40 @@ app.get("/share/:id", async (req, res) => {
 });
 
 /* =======================================================
-   🖼️ Proxy imagine – versiunea fixă (fără 404)
+   🖼️ Proxy imagine pentru Facebook (versiune stabilă)
 ======================================================= */
-app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
+app.get("/proxy-image", async (req, res) => {
   try {
     const imageUrl = req.query.url;
     if (!imageUrl) return res.status(400).send("Lipsește URL-ul imaginii");
 
-    const finalUrl = decodeURIComponent(imageUrl)
-      .replace(/^http:\/\//, "https://")
-      .replace("/upload/", "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/");
+    const cleanUrl = decodeURIComponent(imageUrl).replace(/^http:\/\//, "https://");
+    console.log("🌍 Proxy imagine pentru OG:", cleanUrl);
 
-    console.log("🖼️ Fetch imagine:", finalUrl);
-
-    const response = await fetch(finalUrl, {
+    const response = await fetch(cleanUrl, {
       headers: {
-        "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
-        Accept: "image/jpeg,image/*;q=0.8",
+        "User-Agent": "facebookexternalhit/1.1 (+https://www.facebook.com/externalhit_uatext.php)",
+        Accept: "image/jpeg,image/png,image/*;q=0.8",
       },
     });
 
     if (!response.ok) {
-      console.error("⚠️ Imagine negăsită:", response.status, response.statusText);
+      console.warn("⚠️ Imagine negăsită:", response.status, response.statusText);
       return res.status(404).send("Imagine negăsită");
     }
 
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    if (!contentType.startsWith("image/")) {
+      console.error("❌ Tip invalid:", contentType);
+      return res.status(415).send("Tip invalid de imagine");
+    }
+
     const buffer = Buffer.from(await response.arrayBuffer());
-
-    res.writeHead(200, {
-      "Content-Type": "image/jpeg",
-      "Cache-Control": "public, max-age=86400",
-      "Content-Length": buffer.byteLength,
-    });
-
-    res.end(buffer);
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(buffer);
   } catch (err) {
-    console.error("❌ Eroare proxy imagine:", err);
+    console.error("❌ Eroare proxy imagine:", err.message);
     res.status(500).send("Eroare proxy imagine");
   }
 });
@@ -200,11 +197,7 @@ cron.schedule("0 2 * * *", async () => {
       { $set: { status: "expirat" } }
     );
     if (expiredFree.modifiedCount > 0 || expiredFeatured.modifiedCount > 0) {
-      console.log(
-        `🕒 [CRON] Dezactivate: ${
-          expiredFree.modifiedCount + expiredFeatured.modifiedCount
-        } anunțuri expirate.`
-      );
+      console.log(`🕒 [CRON] Dezactivate: ${expiredFree.modifiedCount + expiredFeatured.modifiedCount} anunțuri expirate.`);
     }
   } catch (err) {
     console.error("❌ Eroare CRON:", err);
