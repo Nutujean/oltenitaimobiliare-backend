@@ -14,6 +14,7 @@ import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
+import shareRoutes from "./routes/shareRoute.js";
 
 dotenv.config();
 mongoose.set("autoIndex", process.env.NODE_ENV !== "production");
@@ -72,6 +73,7 @@ app.use("/api/users", usersRoutes);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/listings", listingsRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/", shareRoutes);
 
 console.log("✔ Rute Stripe + Listings montate");
 
@@ -214,6 +216,23 @@ app.use((req, res) => {
     return res.status(404).json({ error: "Ruta API inexistentă" });
   }
   res.status(404).send("Not found");
+});
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ✅ Servim o imagine OG statică direct din backend (pentru Facebook)
+app.get("/og-default.jpg", (req, res) => {
+  const imagePath = path.join(__dirname, "public", "og-default.jpg");
+  res.setHeader("Content-Type", "image/jpeg");
+  res.sendFile(imagePath, (err) => {
+    if (err) {
+      console.error("❌ Eroare la trimiterea og-default.jpg:", err);
+      res.status(500).send("Eroare la imaginea OG");
+    }
+  });
 });
 
 /* ---------------- Start ---------------- */
