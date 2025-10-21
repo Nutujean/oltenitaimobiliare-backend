@@ -112,7 +112,6 @@ app.get("/share/:id", async (req, res) => {
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>${title}</title>
 
-          <!-- ✅ Meta OG principale -->
           <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(image)}&v=2" />
           <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(image)}&v=2" />
           <meta property="og:image:width" content="1200" />
@@ -124,11 +123,8 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
           <meta property="og:locale" content="ro_RO" />
-
-          <!-- ✅ fb:app_id adăugat pentru avertisment -->
           <meta property="fb:app_id" content="0" />
 
-          <!-- ✅ Twitter Card -->
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content="${title}" />
           <meta name="twitter:description" content="${desc}" />
@@ -148,54 +144,43 @@ app.get("/share/:id", async (req, res) => {
   }
 });
 
-
 /* =======================================================
-   🖼️ Proxy imagine stabil
+   🖼️ Proxy imagine – versiunea fixă (fără 404)
 ======================================================= */
-const httpsAgent = new https.Agent({ rejectUnauthorized: false });
-
 app.get(["/proxy-image", "/proxy-image.jpg"], async (req, res) => {
   try {
     const imageUrl = req.query.url;
     if (!imageUrl) return res.status(400).send("Lipsește URL-ul imaginii");
 
-    const cleanUrl = decodeURIComponent(imageUrl).replace(/^http:\/\//, "https://");
-    console.log("🌍 Fetch imagine pentru OG:", cleanUrl);
+    const finalUrl = decodeURIComponent(imageUrl)
+      .replace(/^http:\/\//, "https://")
+      .replace("/upload/", "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/");
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
+    console.log("🖼️ Fetch imagine:", finalUrl);
 
-    const response = await fetch(cleanUrl, {
-      agent: httpsAgent,
-      signal: controller.signal,
+    const response = await fetch(finalUrl, {
       headers: {
-        "User-Agent":
-          "facebookexternalhit/1.1 (+https://www.facebook.com/externalhit_uatext.php)",
+        "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
         Accept: "image/jpeg,image/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
       },
     });
 
-    clearTimeout(timeout);
-
     if (!response.ok) {
-      console.warn("⚠️ Imagine negăsită:", response.status, response.statusText);
+      console.error("⚠️ Imagine negăsită:", response.status, response.statusText);
       return res.status(404).send("Imagine negăsită");
     }
 
     const buffer = Buffer.from(await response.arrayBuffer());
-    const contentType = response.headers.get("content-type") || "image/jpeg";
 
-    res.status(200);
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.setHeader("Content-Length", buffer.length);
-    res.send(buffer);
+    res.writeHead(200, {
+      "Content-Type": "image/jpeg",
+      "Cache-Control": "public, max-age=86400",
+      "Content-Length": buffer.byteLength,
+    });
+
+    res.end(buffer);
   } catch (err) {
-    console.error("❌ Eroare proxy imagine:", err.name, err.message);
-    if (err.name === "AbortError") {
-      return res.status(504).send("Timeout la descărcarea imaginii");
-    }
+    console.error("❌ Eroare proxy imagine:", err);
     res.status(500).send("Eroare proxy imagine");
   }
 });
