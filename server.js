@@ -176,7 +176,7 @@ app.get("/share/:id", async (req, res) => {
 /* =======================================================
    🟢 Redirect intermediar pentru iPhone Facebook Share
 ======================================================= */
-app.get("/go/facebook/:id", (req, res) => {
+app.get("/go/fb/:id", (req, res) => {
   const id = req.params.id;
   const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
     `https://share.oltenitaimobiliare.ro/share/${id}`
