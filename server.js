@@ -89,11 +89,15 @@ app.get("/share/:id", async (req, res) => {
 
     let image = listing.images?.[0] || listing.imageUrl || "";
     if (image.includes("cloudinary.com")) {
-      image = image.replace(
-        "/upload/",
-        "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
-      );
-    } else if (!image) {
+  image = image.replace(
+    /\/upload\/[^/]*\//,
+    "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
+  );
+  if (!image.includes("/upload/f_jpg")) {
+    image = image.replace("/upload/", "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/");
+   }
+  }
+  else if (!image) {
       image =
         "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
     }
