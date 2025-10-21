@@ -15,6 +15,7 @@ import usersRoutes from "./routes/users.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import shareRoutes from "./routes/shareRoute.js";
+import shareFacebookRoute from "./routes/shareFacebookRoute.js";
 
 dotenv.config();
 mongoose.set("autoIndex", process.env.NODE_ENV !== "production");
@@ -74,6 +75,7 @@ app.use("/api/stripe", stripeRoutes);
 app.use("/api/listings", listingsRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/", shareRoutes);
+app.use("/", shareFacebookRoute);
 
 console.log("✔ Rute Stripe + Listings montate");
 
