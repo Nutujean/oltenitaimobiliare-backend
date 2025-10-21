@@ -174,15 +174,50 @@ app.get("/share/:id", async (req, res) => {
 });
 
 /* =======================================================
-   🟢 Redirect intermediar pentru iPhone Facebook Share
+   🔵 Share Facebook direct (fără redirect intern pentru iPhone)
 ======================================================= */
-app.get("/go/fb/:id", (req, res) => {
-  const id = req.params.id;
-  const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-    `https://share.oltenitaimobiliare.ro/share/${id}`
-  )}`;
-  console.log("📱 Redirect iPhone Facebook Share:", fbUrl);
-  res.redirect(fbUrl);
+app.get("/fb/:id", async (req, res) => {
+  try {
+    const listing = await Listing.findById(req.params.id).lean();
+    if (!listing) return res.status(404).send("<h1>Anunț inexistent</h1>");
+
+    let image = listing.images?.[0] || listing.imageUrl || "";
+    if (image.includes("cloudinary.com")) {
+      image = image.replace(
+        /\/upload\/[^/]*\//,
+        "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
+      );
+    }
+
+    const title = listing.title || "Anunț imobiliar în Oltenița";
+    const desc =
+      listing.description?.substring(0, 160) ||
+      "Vezi detalii despre acest anunț imobiliar din Oltenița.";
+    const redirectUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+      <html lang="ro">
+        <head>
+          <meta charset="utf-8" />
+          <title>${title}</title>
+          <meta property="og:title" content="${title}" />
+          <meta property="og:description" content="${desc}" />
+          <meta property="og:image" content="${image}" />
+          <meta property="og:url" content="${redirectUrl}" />
+          <meta property="og:type" content="article" />
+          <meta property="og:locale" content="ro_RO" />
+        </head>
+        <body style="font-family:sans-serif;text-align:center;margin-top:50px;">
+          <h2>${title}</h2>
+          <p>${desc}</p>
+          <a href="${redirectUrl}">👉 Vezi anunțul complet pe Oltenița Imobiliare</a>
+        </body>
+      </html>`);
+  } catch (err) {
+    console.error("❌ Eroare la /fb:", err);
+    res.status(500).send("Eroare internă server");
+  }
 });
 
 /* =======================================================
