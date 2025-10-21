@@ -3,65 +3,70 @@ import Listing from "../models/Listing.js";
 
 const router = express.Router();
 
-// ✅ Rută pentru partajare pe Facebook, WhatsApp, etc.
-router.get("/share/fb/:id", async (req, res) => {
+/* ============================================================
+   🏡 RUTĂ PRINCIPALĂ PENTRU META SHARE (Open Graph)
+   ============================================================ */
+router.get("/share/:id", async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
-    if (!listing) return res.status(404).send("Anunțul nu a fost găsit");
+    const { id } = req.params;
+    const listing = await Listing.findById(id);
 
-    const siteUrl = "https://oltenitaimobiliare.ro";
-    const shareUrl = `${siteUrl}/anunt/${listing._id}`;
-    const imageUrl =
+    if (!listing) {
+      return res.status(404).send("Anunțul nu a fost găsit");
+    }
+
+    const image =
       listing.images?.[0] ||
       listing.imageUrl ||
-      "https://oltenitaimobiliare.ro/preview.jpg";
+      "https://oltenitaimobiliare.ro/og-default.jpg";
 
-    const title =
-      listing.title?.replace(/"/g, "&quot;") ||
-      "Anunț imobiliar din Oltenița";
-    const desc =
-      listing.description?.substring(0, 150).replace(/"/g, "&quot;") ||
-      "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
-
-    // ✅ Antete clare pentru Facebook & Twitter
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=3600");
-    res.setHeader("Access-Control-Allow-Origin", "*");
-
-    // ✅ HTML OG Tags (Facebook citește doar acestea)
+    // ✅ HTML complet pentru Facebook / WhatsApp / LinkedIn etc.
     res.send(`<!DOCTYPE html>
 <html lang="ro">
-  <head>
-    <meta charset="utf-8" />
-    <title>${title}</title>
-
-    <!-- Open Graph -->
-    <meta property="og:title" content="${title}" />
-    <meta property="og:description" content="${desc}" />
-    <meta property="og:image" content="${imageUrl}?v=${Date.now()}" />
-    <meta property="og:url" content="${shareUrl}" />
-    <meta property="og:type" content="article" />
-
-    <!-- Facebook App ID -->
-    <meta property="fb:app_id" content="966242223397117" />
-
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${title}" />
-    <meta name="twitter:description" content="${desc}" />
-    <meta name="twitter:image" content="${imageUrl}?v=${Date.now()}" />
-  </head>
-
-  <body>
-    <script>
-      // După ce Facebook citește meta-urile, redirecționăm către anunțul real
-      window.location.href = "${shareUrl}";
-    </script>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <title>${listing.title}</title>
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://share.oltenitaimobiliare.ro/share/fb/${listing._id}">
+  <meta property="og:title" content="${listing.title}">
+  <meta property="og:description" content="${listing.description?.substring(0, 150) || "Vezi detalii despre acest anunț imobiliar din Oltenița"}">
+  <meta property="og:image" content="${image}?v=9">
+  <meta property="og:image:alt" content="${listing.title}">
+  <meta property="fb:app_id" content="966242223397117">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${listing.title}">
+  <meta name="twitter:description" content="${listing.description?.substring(0, 150) || ""}">
+  <meta name="twitter:image" content="${image}?v=9">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="canonical" href="https://oltenitaimobiliare.ro/anunt/${listing._id}">
+</head>
+<body>
+  <script>
+    // Redirecționare automată către pagina reală a anunțului
+    window.location.href = "https://oltenitaimobiliare.ro/anunt/${listing._id}";
+  </script>
+</body>
 </html>`);
   } catch (err) {
-    console.error("❌ Eroare la /share/fb/:id:", err);
+    console.error("Eroare la ruta /share/:id:", err);
     res.status(500).send("Eroare server");
+  }
+});
+
+/* ============================================================
+   🔵 REDIRECT DIRECT CĂTRE FACEBOOK (100% STABIL)
+   ============================================================ */
+router.get("/fb/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const shareUrl = `https://share.oltenitaimobiliare.ro/share/fb/${id}`;
+    const redirectUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+      shareUrl
+    )}`;
+    res.redirect(redirectUrl);
+  } catch (err) {
+    console.error("Eroare la redirect FB:", err);
+    res.status(500).send("Eroare la redirect Facebook");
   }
 });
 
