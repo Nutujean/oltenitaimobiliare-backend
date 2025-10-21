@@ -34,19 +34,32 @@ router.get("/share/:id", async (req, res) => {
         <meta charset="utf-8" />
         <meta property="og:title" content="${title.replace(/"/g, "&quot;")}" />
         <meta property="og:description" content="${desc.replace(/"/g, "&quot;")}" />
-        <meta property="og:image" content="${imageUrl}?v=5" />
+        <meta property="og:image" content="${imageUrl}?v=6" />
         <meta property="og:url" content="${shareUrl}" />
         <meta property="og:type" content="article" />
         <meta property="fb:app_id" content="966242223397117" />
         <meta name="twitter:card" content="summary_large_image" />
         <title>${title}</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 80px;
+            color: #444;
+          }
+          h2 {
+            font-weight: 500;
+          }
+        </style>
       </head>
       <body>
-        <p>Redirecționare în curs...</p>
+        <h2>🔄 Încărcare previzualizare pentru Facebook...</h2>
+        <p>Te redirecționăm către anunțul real în câteva secunde.</p>
         <script>
+          // ⏳ Dăm timp Facebook-ului să preia meta-tagurile OG
           setTimeout(() => {
             window.location.href = "${shareUrl}";
-          }, 1500); // 1.5 secunde delay pentru ca Facebook să preia OG tags
+          }, 3000); // 3 secunde delay
         </script>
       </body>
       </html>
