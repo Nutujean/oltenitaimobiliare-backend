@@ -6,6 +6,8 @@ import mongoose from "mongoose";
 import cron from "node-cron";
 import fetch from "node-fetch";
 import https from "https";
+import path from "path";
+import { fileURLToPath } from "url";
 import Listing from "./models/Listing.js";
 
 // 🔹 Rute existente
@@ -82,26 +84,40 @@ console.log("✔ Rute Stripe + Listings montate");
 /* =======================================================
    🟦 Distribuire Facebook (Open Graph + redirect curat)
 ======================================================= */
+
+// ✅ Cache în memorie pentru share pages (accelerează răspunsul)
+const cache = new Map();
+
 app.get("/share/:id", async (req, res) => {
   try {
-    console.log("📣 Generare pagină SHARE pentru ID:", req.params.id);
+    const id = req.params.id;
 
-    const listing = await Listing.findById(req.params.id).lean();
+    // ✅ Dacă există deja în cache, trimitem instant
+    if (cache.has(id)) {
+      console.log("⚡ Servit din cache:", id);
+      return res.send(cache.get(id));
+    }
+
+    console.log("📣 Generare pagină SHARE pentru ID:", id);
+
+    const listing = await Listing.findById(id).lean();
     if (!listing) {
       return res.status(404).send("<h1>Anunțul nu a fost găsit</h1>");
     }
 
     let image = listing.images?.[0] || listing.imageUrl || "";
     if (image.includes("cloudinary.com")) {
-  image = image.replace(
-    /\/upload\/[^/]*\//,
-    "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
-  );
-  if (!image.includes("/upload/f_jpg")) {
-    image = image.replace("/upload/", "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/");
-   }
-  }
-  else if (!image) {
+      image = image.replace(
+        /\/upload\/[^/]*\//,
+        "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
+      );
+      if (!image.includes("/upload/f_jpg")) {
+        image = image.replace(
+          "/upload/",
+          "/upload/f_jpg,q_auto,w_1200,h_630,c_fill/"
+        );
+      }
+    } else if (!image) {
       image =
         "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
     }
@@ -112,15 +128,16 @@ app.get("/share/:id", async (req, res) => {
       "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
     const redirectUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(`<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
       <html lang="ro">
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>${title}</title>
 
-          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image?url=${encodeURIComponent(image)}" />
+          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image?url=${encodeURIComponent(
+            image
+          )}" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:image:type" content="image/jpeg" />
@@ -144,7 +161,12 @@ app.get("/share/:id", async (req, res) => {
           <p>${desc}</p>
           <a href="${redirectUrl}">👉 Vezi anunțul complet pe Oltenița Imobiliare</a>
         </body>
-      </html>`);
+      </html>`;
+
+    // ✅ Salvăm în cache pentru răspuns rapid ulterior
+    cache.set(id, html);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
   } catch (err) {
     console.error("❌ Eroare la /share:", err);
     res.status(500).send("Eroare internă server");
@@ -164,7 +186,8 @@ app.get("/proxy-image", async (req, res) => {
 
     const response = await fetch(cleanUrl, {
       headers: {
-        "User-Agent": "facebookexternalhit/1.1 (+https://www.facebook.com/externalhit_uatext.php)",
+        "User-Agent":
+          "facebookexternalhit/1.1 (+https://www.facebook.com/externalhit_uatext.php)",
         Accept: "image/jpeg,image/png,image/*;q=0.8",
       },
     });
@@ -205,7 +228,11 @@ cron.schedule("0 2 * * *", async () => {
       { $set: { status: "expirat" } }
     );
     if (expiredFree.modifiedCount > 0 || expiredFeatured.modifiedCount > 0) {
-      console.log(`🕒 [CRON] Dezactivate: ${expiredFree.modifiedCount + expiredFeatured.modifiedCount} anunțuri expirate.`);
+      console.log(
+        `🕒 [CRON] Dezactivate: ${
+          expiredFree.modifiedCount + expiredFeatured.modifiedCount
+        } anunțuri expirate.`
+      );
     }
   } catch (err) {
     console.error("❌ Eroare CRON:", err);
@@ -219,8 +246,6 @@ app.use((req, res) => {
   }
   res.status(404).send("Not found");
 });
-import path from "path";
-import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -248,9 +273,11 @@ app.listen(PORT, () => {
 ======================================================= */
 setInterval(() => {
   const url = "https://oltenitaimobiliare-backend.onrender.com/api/health";
-  https.get(url, (res) => {
-    console.log(`🔁 Keep-alive ping -> ${res.statusCode}`);
-  }).on("error", (err) => {
-    console.error("❌ Keep-alive error:", err.message);
-  });
+  https
+    .get(url, (res) => {
+      console.log(`🔁 Keep-alive ping -> ${res.statusCode}`);
+    })
+    .on("error", (err) => {
+      console.error("❌ Keep-alive error:", err.message);
+    });
 }, 4 * 60 * 1000);
