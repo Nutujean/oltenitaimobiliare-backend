@@ -82,10 +82,6 @@ app.get("/share/:id", async (req, res) => {
   try {
     console.log("📣 Generare pagină SHARE pentru ID:", req.params.id);
 
-    const ua = req.headers["user-agent"] || "";
-    const isBot = /facebookexternalhit|Twitterbot|Slackbot|WhatsApp/i.test(ua);
-    console.log("👁️ User-Agent:", ua);
-
     const listing = await Listing.findById(req.params.id).lean();
     if (!listing) {
       return res.status(404).send("<h1>Anunțul nu a fost găsit</h1>");
@@ -99,7 +95,7 @@ app.get("/share/:id", async (req, res) => {
       );
     } else if (!image) {
       image =
-        "https://res.cloudinary.com/dql90lxy5/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1759264353/e3rkobxfqobzohrme4tu.jpg";
+        "https://res.cloudinary.com/oltenitaimobiliare/image/upload/f_jpg,q_auto,w_1200,h_630,c_fill/v1739912345/oltenita_fallback.jpg";
     }
 
     const title = listing.title || "Anunț imobiliar în Oltenița";
@@ -108,33 +104,6 @@ app.get("/share/:id", async (req, res) => {
       "Vezi detalii despre acest anunț imobiliar din Oltenița și împrejurimi.";
     const redirectUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
-    if (isBot) {
-      console.log("🤖 Crawler detectat, servim OG tags fără redirect.");
-      res.setHeader("Content-Type", "text/html; charset=utf-8");
-      return res.send(`<!DOCTYPE html>
-        <html lang="ro">
-        <head>
-          <meta charset="utf-8" />
-          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
-            image
-          )}&v=8" />
-          <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
-            image
-          )}&v=8" />
-          <meta property="og:image:width" content="1200" />
-          <meta property="og:image:height" content="630" />
-          <meta property="og:image:type" content="image/jpeg" />
-          <meta property="og:title" content="${title}" />
-          <meta property="og:description" content="${desc}" />
-          <meta property="og:url" content="${redirectUrl}" />
-          <meta property="og:site_name" content="Oltenița Imobiliare" />
-          <meta property="og:type" content="article" />
-          <meta property="og:locale" content="ro_RO" />
-        </head>
-        <body></body></html>`);
-    }
-
-    // 🧍‍ Vizitator uman → pagina normală cu redirect
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(`<!DOCTYPE html>
       <html lang="ro">
@@ -142,12 +111,10 @@ app.get("/share/:id", async (req, res) => {
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <title>${title}</title>
-          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
-            image
-          )}&v=8" />
-          <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(
-            image
-          )}&v=8" />
+
+          <!-- ✅ Meta OG principale -->
+          <meta property="og:image" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(image)}&v=2" />
+          <meta property="og:image:secure_url" content="https://share.oltenitaimobiliare.ro/proxy-image.jpg?url=${encodeURIComponent(image)}&v=2" />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:image:type" content="image/jpeg" />
@@ -157,6 +124,16 @@ app.get("/share/:id", async (req, res) => {
           <meta property="og:site_name" content="Oltenița Imobiliare" />
           <meta property="og:type" content="article" />
           <meta property="og:locale" content="ro_RO" />
+
+          <!-- ✅ fb:app_id adăugat pentru avertisment -->
+          <meta property="fb:app_id" content="0" />
+
+          <!-- ✅ Twitter Card -->
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content="${title}" />
+          <meta name="twitter:description" content="${desc}" />
+          <meta name="twitter:image" content="${image}" />
+
           <meta http-equiv="refresh" content="1; url=${redirectUrl}" />
         </head>
         <body style="font-family:sans-serif;text-align:center;margin-top:50px;">
@@ -170,6 +147,7 @@ app.get("/share/:id", async (req, res) => {
     res.status(500).send("Eroare internă server");
   }
 });
+
 
 /* =======================================================
    🖼️ Proxy imagine stabil
