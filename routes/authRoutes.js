@@ -3,7 +3,7 @@ import { protect, admin } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer"; // 🟢 pentru trimitere email
+import nodemailer from "nodemailer"; // păstrat pentru compatibilitate
 console.log("✅ authRoutes încărcat corect pe server");
 
 const router = express.Router();
@@ -114,7 +114,7 @@ router.put("/update/:id", protect, async (req, res) => {
   }
 });
 
-/* 🟢 🧩 Resetare parolă - Trimitere email */
+/* 🟢 🧩 Resetare parolă - Trimitere email (prin API Brevo) */
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
@@ -126,34 +126,37 @@ router.post("/forgot-password", async (req, res) => {
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
     const resetLink = `https://oltenitaimobiliare.ro/resetare-parola/${token}`;
 
-    // 🟢 Brevo SMTP (în loc de Gmail)
-    const transporter = nodemailer.createTransport({
-      host: "smtp-relay.brevo.com",
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.EMAIL_USER || process.env.contact_email,
-        pass: process.env.EMAIL_PASS || process.env.contact_pass,
+    // 🟢 Folosim API Brevo (HTTPS), sigur pe Render
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "api-key": process.env.contact_pass, // cheia SMTP/API Brevo
+        "content-type": "application/json",
       },
+      body: JSON.stringify({
+        sender: { name: "Oltenița Imobiliare", email: process.env.contact_email },
+        to: [{ email }],
+        subject: "Resetare parolă - Oltenița Imobiliare",
+        htmlContent: `
+          <h3>Bună,</h3>
+          <p>Ai cerut resetarea parolei.</p>
+          <p>Apasă pe linkul de mai jos (valabil 15 minute):</p>
+          <a href="${resetLink}" style="color:#1a73e8;">${resetLink}</a>
+          <br/><br/>
+          <p>Dacă nu ai cerut această resetare, poți ignora mesajul.</p>
+        `,
+      }),
     });
 
-    await transporter.sendMail({
-      from: `"Oltenița Imobiliare" <${process.env.EMAIL_USER || process.env.contact_email}>`,
-      to: email,
-      subject: "Resetare parolă - Oltenița Imobiliare",
-      html: `
-        <h3>Bună,</h3>
-        <p>Ai cerut resetarea parolei.</p>
-        <p>Apasă pe linkul de mai jos (valabil 15 minute):</p>
-        <a href="${resetLink}" style="color:#1a73e8;">${resetLink}</a>
-        <br/><br/>
-        <p>Dacă nu ai cerut această resetare, poți ignora mesajul.</p>
-      `,
-    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error("Eroare API Brevo: " + text);
+    }
 
     res.json({ message: "Email de resetare trimis (dacă adresa există)." });
   } catch (err) {
-    console.error("Eroare la trimiterea emailului:", err);
+    console.error("❌ Eroare la trimiterea emailului:", err);
     res.status(500).json({ error: "Eroare la trimiterea emailului." });
   }
 });
