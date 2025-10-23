@@ -127,11 +127,15 @@ router.post("/forgot-password", async (req, res) => {
     const resetLink = `https://oltenitaimobiliare.ro/resetare-parola/${token}`;
 
     const transporter = nodemailer.createTransport({
-      service: "gmail",
+     service: "gmail",
+      secure: false,
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+       user: process.env.EMAIL_USER,
+       pass: process.env.EMAIL_PASS,
       },
+    tls: {
+    rejectUnauthorized: false,
+     },
     });
 
     await transporter.sendMail({
