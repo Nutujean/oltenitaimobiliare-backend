@@ -22,7 +22,14 @@ router.post("/register", async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     const user = await User.create({ name, email, password: hashed, phone });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+    let decoded;
+try {
+  decoded = jwt.verify(token, process.env.JWT_SECRET);
+} catch (err) {
+  console.error("❌ Eroare verificare JWT:", err.message);
+  console.error("🔐 JWT_SECRET folosit:", process.env.JWT_SECRET);
+  return res.status(400).json({ error: "Token invalid sau expirat (debug)." });
+}
       expiresIn: "7d",
     });
 
@@ -116,62 +123,22 @@ router.put("/update/:id", protect, async (req, res) => {
   }
 });
 
-/* 🟢 🧩 Resetare parolă - Trimitere email (prin API Brevo) */
-router.post("/forgot-password", async (req, res) => {
-  try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.json({ message: "Dacă adresa există, se va trimite un email." });
-    }
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
-    const resetLink = `https://oltenitaimobiliare.ro/reset-password/${token}`;
-
-    console.log("🔍 CONTACT_PASS =", process.env.CONTACT_PASS ? "setat" : "undefined");
-    console.log("🔍 CONTACT_EMAIL =", process.env.CONTACT_EMAIL ? process.env.CONTACT_EMAIL : "undefined");
-
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "accept": "application/json",
-        "api-key": process.env.CONTACT_PASS,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        sender: { name: "Oltenița Imobiliare", email: process.env.CONTACT_EMAIL },
-        to: [{ email }],
-        subject: "Resetare parolă - Oltenița Imobiliare",
-        htmlContent: `
-          <h3>Bună,</h3>
-          <p>Ai cerut resetarea parolei.</p>
-          <p>Apasă pe linkul de mai jos (valabil 15 minute):</p>
-          <a href="${resetLink}" style="color:#1a73e8;">${resetLink}</a>
-          <br/><br/>
-          <p>Dacă nu ai cerut această resetare, poți ignora mesajul.</p>
-        `,
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error("Eroare API Brevo: " + text);
-    }
-
-    res.json({ message: "Email de resetare trimis (dacă adresa există)." });
-  } catch (err) {
-    console.error("❌ Eroare la trimiterea emailului:", err);
-    res.status(500).json({ error: "Eroare la trimiterea emailului." });
-  }
-});
-
 /* 🟢 🧩 Resetare parolă - Salvare nouă */
 router.post("/reset-password/:token", async (req, res) => {
   console.log("🔑 Token primit de la frontend:", req.params.token);
   try {
     const { token } = req.params;
     const { password } = req.body;
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      console.error("❌ Eroare verificare JWT:", err.message);
+      console.error("🔐 JWT_SECRET folosit:", process.env.JWT_SECRET);
+      return res.status(400).json({ error: "Token invalid sau expirat (debug)." });
+    }
+
     const user = await User.findById(decoded.id);
     if (!user) return res.status(400).json({ error: "Token invalid sau expirat." });
 
