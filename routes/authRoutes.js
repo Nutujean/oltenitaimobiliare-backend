@@ -3,7 +3,7 @@ import { protect, admin } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer"; // 🟢 adăugat pentru trimitere email
+import nodemailer from "nodemailer"; // 🟢 pentru trimitere email
 console.log("✅ authRoutes încărcat corect pe server");
 
 const router = express.Router();
@@ -126,20 +126,19 @@ router.post("/forgot-password", async (req, res) => {
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
     const resetLink = `https://oltenitaimobiliare.ro/resetare-parola/${token}`;
 
+    // 🟢 Brevo SMTP (în loc de Gmail)
     const transporter = nodemailer.createTransport({
-     service: "gmail",
+      host: "smtp-relay.brevo.com",
+      port: 587,
       secure: false,
       auth: {
-       user: process.env.EMAIL_USER,
-       pass: process.env.EMAIL_PASS,
+        user: process.env.EMAIL_USER || process.env.contact_email,
+        pass: process.env.EMAIL_PASS || process.env.contact_pass,
       },
-    tls: {
-    rejectUnauthorized: false,
-     },
     });
 
     await transporter.sendMail({
-      from: `"Oltenița Imobiliare" <${process.env.EMAIL_USER}>`,
+      from: `"Oltenița Imobiliare" <${process.env.EMAIL_USER || process.env.contact_email}>`,
       to: email,
       subject: "Resetare parolă - Oltenița Imobiliare",
       html: `
