@@ -5,6 +5,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer"; // păstrat pentru compatibilitate
 console.log("✅ authRoutes încărcat corect pe server");
+console.log("🔍 CONTACT_EMAIL =", process.env.CONTACT_EMAIL);
+console.log("🔍 CONTACT_PASS =", process.env.CONTACT_PASS ? "****" : "undefined");
 
 const router = express.Router();
 
