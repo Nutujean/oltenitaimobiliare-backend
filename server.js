@@ -18,6 +18,7 @@ import stripeRoutes from "./routes/stripeRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import shareRoutes from "./routes/shareRoute.js";
 import shareFacebookRoute from "./routes/shareFacebookRoute.js";
+import sitemapRoute from "./routes/sitemapRoute.js";
 
 dotenv.config();
 mongoose.set("autoIndex", process.env.NODE_ENV !== "production");
