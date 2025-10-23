@@ -127,6 +127,8 @@ router.post("/forgot-password", async (req, res) => {
     const resetLink = `https://oltenitaimobiliare.ro/resetare-parola/${token}`;
 
     // 🟢 Folosim API Brevo (HTTPS), sigur pe Render
+    console.log("🔍 contact_pass =", JSON.stringify(process.env.contact_pass));
+    console.log("🔍 contact_email =", JSON.stringify(process.env.contact_email));
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
