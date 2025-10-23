@@ -126,7 +126,8 @@ router.post("/forgot-password", async (req, res) => {
       return res.json({ message: "Dacă adresa există, se va trimite un email." });
     }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "6h" });
+    console.log("🔐 Token generat:", token);
     const resetLink = `https://oltenitaimobiliare.ro/reset-password/${token}`;
 
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
