@@ -78,6 +78,7 @@ app.use("/api/listings", listingsRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/", shareRoutes);
 app.use("/", shareFacebookRoute);
+app.use("/", sitemapRoute);
 
 console.log("✔ Rute Stripe + Listings montate");
 
