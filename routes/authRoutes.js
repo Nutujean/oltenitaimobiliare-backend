@@ -6,8 +6,6 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer"; // păstrat pentru compatibilitate
 
 console.log("✅ authRoutes încărcat corect pe server");
-console.log("🔍 CONTACT_EMAIL =", process.env.CONTACT_EMAIL);
-console.log("🔍 CONTACT_PASS =", process.env.CONTACT_PASS ? "setat" : "undefined");
 
 const router = express.Router();
 
@@ -35,7 +33,6 @@ router.post("/register", async (req, res) => {
       token,
     });
   } catch (error) {
-    console.error("Eroare la înregistrare:", error);
     res.status(500).json({ message: "Eroare server la înregistrare." });
   }
 });
@@ -65,7 +62,6 @@ router.post("/login", async (req, res) => {
       token,
     });
   } catch (error) {
-    console.error("Eroare la login:", error);
     res.status(500).json({ message: "Eroare server la autentificare." });
   }
 });
@@ -77,7 +73,7 @@ router.get("/profile", protect, async (req, res) => {
     if (!user)
       return res.status(404).json({ message: "Utilizator negăsit." });
     res.json(user);
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Eroare server la profil." });
   }
 });
@@ -111,8 +107,7 @@ router.put("/update/:id", protect, async (req, res) => {
     delete userObj.__v;
 
     res.json(userObj);
-  } catch (error) {
-    console.error("Eroare la actualizare utilizator:", error);
+  } catch {
     res.status(500).json({ message: "Eroare la actualizare utilizator." });
   }
 });
@@ -121,7 +116,7 @@ router.put("/update/:id", protect, async (req, res) => {
 router.get("/check-reset-token", async (req, res) => {
   try {
     const { token } = req.query;
-    if (!token) return res.status(400).json({ valid: false, message: "Token lipsă" });
+    if (!token) return res.status(400).json({ valid: false });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (!decoded?.id) return res.status(400).json({ valid: false });
@@ -130,8 +125,7 @@ router.get("/check-reset-token", async (req, res) => {
     if (!user) return res.status(400).json({ valid: false });
 
     return res.json({ valid: true });
-  } catch (err) {
-    console.error("check-reset-token error:", err.message);
+  } catch {
     return res.status(400).json({ valid: false });
   }
 });
@@ -141,15 +135,15 @@ router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
-    if (!user) {
+    if (!user)
       return res.json({ message: "Dacă adresa există, se va trimite un email." });
-    }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "6h" });
-    console.log("🔐 Token generat:", token);
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "6h",
+    });
     const resetLink = `https://oltenitaimobiliare.ro/reset-password/${token}`;
 
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
         "accept": "application/json",
@@ -171,54 +165,30 @@ router.post("/forgot-password", async (req, res) => {
       }),
     });
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error("Eroare API Brevo: " + text);
-    }
-
     res.json({ message: "Email de resetare trimis (dacă adresa există)." });
-  } catch (err) {
-    console.error("❌ Eroare la trimiterea emailului:", err);
+  } catch {
     res.status(500).json({ error: "Eroare la trimiterea emailului." });
   }
 });
 
-/* 🟢 Resetare parolă - Salvare nouă (cu debug complet JWT) */
+/* 🟢 Resetare parolă - Salvare nouă */
 router.post("/reset-password/:token", async (req, res) => {
-  console.log("🔑 Token primit de la frontend:", req.params.token);
-  console.log("🔐 JWT_SECRET folosit:", process.env.JWT_SECRET);
-
   try {
     const { token } = req.params;
     const { password } = req.body;
 
-    // Debug suplimentar JWT
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      console.log("✅ Token decodat corect:", decoded);
-    } catch (err) {
-      console.error("❌ Verificare JWT a eșuat:", err.message);
-      return res.status(400).json({ error: "Token invalid sau expirat. Trimite alt link." });
-    }
-
-    // decodăm efectiv tokenul
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
-
-    if (!user) {
-      console.error("⚠️ Utilizator negăsit pentru token:", decoded.id);
+    if (!user)
       return res.status(400).json({ error: "Token invalid sau expirat." });
-    }
 
     const hashed = await bcrypt.hash(password, 10);
     user.password = hashed;
     await user.save();
 
-    console.log(`✅ Parolă resetată cu succes pentru utilizatorul ${user.email}`);
     res.json({ message: "Parola a fost resetată cu succes!" });
-  } catch (err) {
-    console.error("Eroare resetare:", err);
-    res.status(400).json({ error: "Token expirat sau invalid." });
+  } catch {
+    res.status(400).json({ error: "Token invalid sau expirat." });
   }
 });
 
