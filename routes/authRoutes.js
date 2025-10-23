@@ -3,10 +3,10 @@ import { protect, admin } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer"; // păstrat pentru compatibilitate
+import fetch from "node-fetch"; // 🟢 pentru Brevo API
 console.log("✅ authRoutes încărcat corect pe server");
 console.log("🔍 CONTACT_EMAIL =", process.env.CONTACT_EMAIL);
-console.log("🔍 CONTACT_PASS =", process.env.CONTACT_PASS ? "****" : "undefined");
+console.log("🔍 CONTACT_PASS =", process.env.CONTACT_PASS ? "setat" : "undefined");
 
 const router = express.Router();
 
@@ -128,18 +128,18 @@ router.post("/forgot-password", async (req, res) => {
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
     const resetLink = `https://oltenitaimobiliare.ro/resetare-parola/${token}`;
 
-    // 🟢 Folosim API Brevo (HTTPS), sigur pe Render
-    console.log("🔍 contact_pass =", JSON.stringify(process.env.contact_pass));
-    console.log("🔍 contact_email =", JSON.stringify(process.env.contact_email));
+    console.log("🔍 CONTACT_PASS =", process.env.CONTACT_PASS ? "setat" : "undefined");
+    console.log("🔍 CONTACT_EMAIL =", process.env.CONTACT_EMAIL ? process.env.CONTACT_EMAIL : "undefined");
+
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
         "accept": "application/json",
-        "api-key": process.env.contact_pass || process.env.CONTACT_PASS || process.env.BREVO_API_KEY,
+        "api-key": process.env.CONTACT_PASS,
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        sender: { name: "Oltenița Imobiliare", email: process.env.contact_email || process.env.CONTACT_EMAIL },
+        sender: { name: "Oltenița Imobiliare", email: process.env.CONTACT_EMAIL },
         to: [{ email }],
         subject: "Resetare parolă - Oltenița Imobiliare",
         htmlContent: `
