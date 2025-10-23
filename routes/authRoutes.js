@@ -167,6 +167,7 @@ router.post("/forgot-password", async (req, res) => {
 
 /* 🟢 🧩 Resetare parolă - Salvare nouă */
 router.post("/reset-password/:token", async (req, res) => {
+  console.log("🔑 Token primit de la frontend:", req.params.token);
   try {
     const { token } = req.params;
     const { password } = req.body;
