@@ -133,11 +133,11 @@ router.post("/forgot-password", async (req, res) => {
       method: "POST",
       headers: {
         "accept": "application/json",
-        "api-key": process.env.contact_pass, // cheia SMTP/API Brevo
+        "api-key": process.env.contact_pass || process.env.CONTACT_PASS || process.env.BREVO_API_KEY,
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        sender: { name: "Oltenița Imobiliare", email: process.env.contact_email },
+        sender: { name: "Oltenița Imobiliare", email: process.env.contact_email || process.env.CONTACT_EMAIL },
         to: [{ email }],
         subject: "Resetare parolă - Oltenița Imobiliare",
         htmlContent: `
