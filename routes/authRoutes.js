@@ -126,7 +126,7 @@ router.post("/forgot-password", async (req, res) => {
     }
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "15m" });
-    const resetLink = `https://oltenitaimobiliare.ro/resetare-parola/${token}`;
+    const resetLink = `https://oltenitaimobiliare.ro/reset-password/${token}`;
 
     console.log("🔍 CONTACT_PASS =", process.env.CONTACT_PASS ? "setat" : "undefined");
     console.log("🔍 CONTACT_EMAIL =", process.env.CONTACT_EMAIL ? process.env.CONTACT_EMAIL : "undefined");
