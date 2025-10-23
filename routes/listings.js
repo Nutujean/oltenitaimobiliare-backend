@@ -8,8 +8,6 @@ const router = express.Router();
 
 /* =======================================================
    🟩 GET toate anunțurile (public)
-   - Afișează toate anunțurile active
-   - Acceptă query ?sort=newest|cheapest|expensive
 ======================================================= */
 router.get("/", async (req, res) => {
   try {
@@ -108,6 +106,37 @@ router.post("/", protect, async (req, res) => {
     });
 
     await newListing.save();
+
+    // 🟢 Trimite email de notificare către admin când se publică un anunț nou
+    try {
+      await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "accept": "application/json",
+          "api-key": process.env.CONTACT_PASS || process.env.BREVO_API_KEY,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          sender: { name: "Oltenița Imobiliare", email: process.env.CONTACT_EMAIL },
+          to: [{ email: "oltenitaimobiliare@gmail.com" }], // adresa ta
+          subject: `📢 Anunț nou: ${newListing.title}`,
+          htmlContent: `
+            <h3>📢 Anunț nou adăugat pe site</h3>
+            <p><b>Titlu:</b> ${newListing.title}</p>
+            <p><b>Categorie:</b> ${newListing.category}</p>
+            <p><b>Localitate:</b> ${newListing.location}</p>
+            <p><b>Preț:</b> ${newListing.price} lei</p>
+            <p><b>Telefon:</b> ${newListing.phone || "nespecificat"}</p>
+            <hr>
+            <p><a href="https://oltenitaimobiliare.ro/detaliu/${newListing._id}" target="_blank">🔗 Vezi anunțul</a></p>
+          `,
+        }),
+      });
+      console.log("📨 Email trimis către admin: anunț nou publicat.");
+    } catch (err) {
+      console.error("❌ Eroare la trimiterea emailului admin:", err.message);
+    }
+
     res.status(201).json(newListing);
   } catch (e) {
     console.error("Eroare la POST /api/listings:", e);
