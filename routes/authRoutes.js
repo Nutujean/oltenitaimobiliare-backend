@@ -126,10 +126,12 @@ router.put("/update/:id", protect, async (req, res) => {
 /* 🟢 🧩 Resetare parolă - Salvare nouă */
 router.post("/reset-password/:token", async (req, res) => {
   console.log("🔑 Token primit de la frontend:", req.params.token);
+
   try {
     const { token } = req.params;
     const { password } = req.body;
 
+    // 🧩 Verificare token + debug complet
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -140,7 +142,10 @@ router.post("/reset-password/:token", async (req, res) => {
     }
 
     const user = await User.findById(decoded.id);
-    if (!user) return res.status(400).json({ error: "Token invalid sau expirat." });
+    if (!user) {
+      console.error("⚠️ Utilizator negăsit pentru token:", decoded.id);
+      return res.status(400).json({ error: "Token invalid sau expirat." });
+    }
 
     const hashed = await bcrypt.hash(password, 10);
     user.password = hashed;
