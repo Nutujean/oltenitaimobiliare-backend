@@ -117,7 +117,26 @@ router.put("/update/:id", protect, async (req, res) => {
   }
 });
 
-/* 🟢 🧩 Resetare parolă - Trimitere email (Brevo API) */
+/* 🟢 Verificare validitate token (pentru frontend ResetPassword.jsx) */
+router.get("/check-reset-token", async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ valid: false, message: "Token lipsă" });
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!decoded?.id) return res.status(400).json({ valid: false });
+
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(400).json({ valid: false });
+
+    return res.json({ valid: true });
+  } catch (err) {
+    console.error("check-reset-token error:", err.message);
+    return res.status(400).json({ valid: false });
+  }
+});
+
+/* 🟢 Resetare parolă - Trimitere email */
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
@@ -144,8 +163,8 @@ router.post("/forgot-password", async (req, res) => {
         htmlContent: `
           <h3>Bună,</h3>
           <p>Ai cerut resetarea parolei.</p>
-          <p>Apasă pe linkul de mai jos (valabil 15 minute):</p>
-          <a href="${resetLink}" style="color:#1a73e8;">${resetLink}</a>
+          <p>Apasă pe linkul de mai jos (valabil 6 ore):</p>
+          <a href="${resetLink}" style="color:#1a73e8;word-break:break-all;">${resetLink}</a>
           <br/><br/>
           <p>Dacă nu ai cerut această resetare, poți ignora mesajul.</p>
         `,
@@ -164,25 +183,28 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
-/* 🟢 🧩 Resetare parolă - Salvare nouă */
+/* 🟢 Resetare parolă - Salvare nouă (cu debug complet JWT) */
 router.post("/reset-password/:token", async (req, res) => {
   console.log("🔑 Token primit de la frontend:", req.params.token);
+  console.log("🔐 JWT_SECRET folosit:", process.env.JWT_SECRET);
 
   try {
     const { token } = req.params;
     const { password } = req.body;
 
-    // 🧩 Debug complet pentru token invalid/expirat
-    let decoded;
+    // Debug suplimentar JWT
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("✅ Token decodat corect:", decoded);
     } catch (err) {
-      console.error("❌ Eroare verificare JWT:", err.message);
-      console.error("🔐 JWT_SECRET folosit:", process.env.JWT_SECRET);
-      return res.status(400).json({ error: "Token invalid sau expirat (debug)." });
+      console.error("❌ Verificare JWT a eșuat:", err.message);
+      return res.status(400).json({ error: "Token invalid sau expirat. Trimite alt link." });
     }
 
+    // decodăm efectiv tokenul
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
+
     if (!user) {
       console.error("⚠️ Utilizator negăsit pentru token:", decoded.id);
       return res.status(400).json({ error: "Token invalid sau expirat." });
@@ -192,6 +214,7 @@ router.post("/reset-password/:token", async (req, res) => {
     user.password = hashed;
     await user.save();
 
+    console.log(`✅ Parolă resetată cu succes pentru utilizatorul ${user.email}`);
     res.json({ message: "Parola a fost resetată cu succes!" });
   } catch (err) {
     console.error("Eroare resetare:", err);
