@@ -66,6 +66,7 @@ mongoose
    🧩 ROUTES MOUNTING
 ======================================================= */
 app.use("/api/phone", phoneAuthRoutes); // ✅ Login/Register prin SMS
+console.log("✅ phoneAuthRoutes încărcat corect pe server");
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/listings", listingsRoutes);
