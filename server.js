@@ -1,19 +1,18 @@
 /* =======================================================
-   ✅ SERVER FINAL — API Oltenița Imobiliare (versiune stabilă)
+   ✅ SERVER FINAL — API Oltenița Imobiliare
 ======================================================= */
-
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import cron from "node-cron";
-import https from "https";
 import fetch from "node-fetch";
+import https from "https";
 import Listing from "./models/Listing.js";
 
-/* ----------------- ROUTES ----------------- */
-import authRoutes from "./routes/authRoutes.js";
+// 🔹 Rute
 import phoneAuthRoutes from "./routes/phoneAuth.js";
+import authRoutes from "./routes/authRoutes.js";
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
@@ -22,12 +21,18 @@ import shareRoutes from "./routes/shareRoute.js";
 import shareFacebookRoute from "./routes/shareFacebookRoute.js";
 import sitemapRoute from "./routes/sitemapRoutes.js";
 
-/* ----------------- INIT ----------------- */
 dotenv.config();
 const app = express();
 
 /* =======================================================
-   🌐 REDIRECT: share.oltenitaimobiliare.ro → api.oltenitaimobiliare.ro
+   🌐 CORS + BODY PARSERS
+======================================================= */
+app.use(cors());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+/* =======================================================
+   🧭 REDIRECȚIONARE DOMENIU
 ======================================================= */
 app.use((req, res, next) => {
   const host = req.headers.host || "";
@@ -40,33 +45,25 @@ app.use((req, res, next) => {
 });
 
 /* =======================================================
-   ⚙️ CORS + BODY PARSER
-======================================================= */
-app.use(cors());
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
-
-/* =======================================================
-   💾 MONGODB CONNECTION
+   📦 CONEXIUNE MONGO
 ======================================================= */
 const MONGODB_URI =
-  process.env.MONGO_URI ||
   process.env.MONGODB_URI ||
+  process.env.MONGO_URI ||
   "mongodb://127.0.0.1:27017/oltenitaimobiliare";
 
 mongoose
   .connect(MONGODB_URI)
   .then(() => console.log("✅ MongoDB conectat"))
   .catch((err) => {
-    console.error("❌ Eroare MongoDB:", err.message);
+    console.error("❌ Eroare MongoDB:", err);
     process.exit(1);
   });
 
 /* =======================================================
-   🧩 ROUTES MOUNTING
+   🧩 RUTE API + DIAGNOSTIC EXPRESS
 ======================================================= */
 app.use("/api/phone", phoneAuthRoutes); // ✅ Login/Register prin SMS
-console.log("✅ phoneAuthRoutes încărcat corect pe server");
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/listings", listingsRoutes);
@@ -76,7 +73,27 @@ app.use("/", shareRoutes);
 app.use("/", shareFacebookRoute);
 app.use("/", sitemapRoute);
 
-console.log("✔ Toate rutele API montate corect");
+console.log("✅ Toate rutele Express au fost montate!");
+
+// 🧭 Diagnostic — listăm rutele Express
+setTimeout(() => {
+  const routes = [];
+  app._router.stack.forEach((middleware) => {
+    if (middleware.route) {
+      routes.push(middleware.route.path);
+    } else if (middleware.name === "router" && middleware.handle.stack) {
+      middleware.handle.stack.forEach((handler) => {
+        if (handler.route && handler.route.path) {
+          routes.push(`${middleware.regexp} → ${handler.route.path}`);
+        }
+      });
+    }
+  });
+
+  console.log("🔍 Lista rutelor Express înregistrate:");
+  if (routes.length === 0) console.log("⚠️ Nicio rută activă!");
+  routes.forEach((r) => console.log("➡️ ", r));
+}, 2000);
 
 /* =======================================================
    🧭 HEALTH CHECK
@@ -86,29 +103,16 @@ app.get("/api/health", (_req, res) =>
 );
 
 /* =======================================================
-   🧪 TEST ROUTE — Confirmare build API
-======================================================= */
-app.get("/api/test-route", (req, res) => {
-  res.json({
-    ok: true,
-    version: "api-final-v3.0",
-    url: req.originalUrl,
-    time: new Date().toISOString(),
-  });
-});
-
-/* =======================================================
    🚫 404 HANDLER
 ======================================================= */
 app.use((req, res) => {
-  if (req.path.startsWith("/api/")) {
+  if (req.path.startsWith("/api/"))
     return res.status(404).json({ error: "Ruta API inexistentă" });
-  }
   res.status(404).send("Not found");
 });
 
 /* =======================================================
-   🕒 CRON: Expirare automată anunțuri
+   🕒 CRON EXPIRARE ANUNȚURI
 ======================================================= */
 cron.schedule("0 2 * * *", async () => {
   try {
@@ -121,28 +125,31 @@ cron.schedule("0 2 * * *", async () => {
       { featuredUntil: { $lt: now }, status: { $ne: "expirat" } },
       { $set: { status: "expirat" } }
     );
-    const total = expiredFree.modifiedCount + expiredFeatured.modifiedCount;
-    if (total > 0) console.log(`🕒 [CRON] ${total} anunțuri marcate ca expirate.`);
+    if (expiredFree.modifiedCount > 0 || expiredFeatured.modifiedCount > 0)
+      console.log(
+        `🕒 [CRON] Dezactivate: ${
+          expiredFree.modifiedCount + expiredFeatured.modifiedCount
+        } anunțuri expirate.`
+      );
   } catch (err) {
     console.error("❌ Eroare CRON:", err);
   }
 });
 
 /* =======================================================
-   🔁 KEEP ALIVE — Ping Render (API)
+   🔁 KEEP-ALIVE RENDER
 ======================================================= */
 setInterval(() => {
+  const url = "https://api.oltenitaimobiliare.ro/api/health";
   https
-    .get("https://api.oltenitaimobiliare.ro/api/health", (res) =>
-      console.log(`🔁 KeepAlive -> ${res.statusCode}`)
-    )
-    .on("error", (err) => console.error("❌ KeepAlive error:", err.message));
+    .get(url, (res) => console.log(`🔁 Keep-alive ping -> ${res.statusCode}`))
+    .on("error", (err) => console.error("❌ Keep-alive error:", err.message));
 }, 4 * 60 * 1000);
 
 /* =======================================================
-   🚀 START SERVER (compatibil Render)
+   🚀 START SERVER
 ======================================================= */
 const PORT = process.env.PORT || 10000;
-app.listen(Number(PORT), "0.0.0.0", () => {
-  console.log(`🚀 Server pornit și ascultă pe portul ${PORT}`);
-});
+app.listen(PORT, "0.0.0.0", () =>
+  console.log(`🚀 Server pornit pe portul ${PORT}`)
+);
