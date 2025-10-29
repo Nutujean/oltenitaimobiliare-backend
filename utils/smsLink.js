@@ -1,72 +1,84 @@
-// utils/smsLink.js
-import dotenv from "dotenv";
 import axios from "axios";
-import crypto from "crypto";
-
+import dotenv from "dotenv";
 dotenv.config();
 
-const {
-  SMSLINK_CONNECTION_ID,
-  SMSLINK_PASSWORD,
-  SMSLINK_SENDER,
-  SMSLINK_BASE_URL,
-  APP_NAME,
-  OTP_TTL_MINUTES,
-} = process.env;
-
-// 🧠 Verificăm că avem datele corecte din .env
-console.log("🔍 SMSLink config:");
-console.log("   📡 BASE_URL:", SMSLINK_BASE_URL);
-console.log("   🆔 CONNECTION_ID:", SMSLINK_CONNECTION_ID ? "OK" : "NESETAT");
-console.log("   🔑 PASSWORD:", SMSLINK_PASSWORD ? "OK" : "NESETAT");
-console.log("   ✉️ SENDER:", SMSLINK_SENDER || "(implicit)");
+/* =======================================================
+   ⚙️ CONFIGURARE SMSLINK
+======================================================= */
+const SMSLINK_BASE_URL =
+  process.env.SMSLINK_BASE_URL ||
+  "https://secure.smslink.ro/sms/gateway/communicate/index.php";
+const SMSLINK_CONNECTION_ID = process.env.SMSLINK_CONNECTION_ID;
+const SMSLINK_PASSWORD = process.env.SMSLINK_PASSWORD;
+const SMSLINK_SENDER = process.env.SMSLINK_SENDER || "Oltenita";
 
 /* =======================================================
-   ✉️ Trimite SMS prin SMSLink API
+   🧠 STOCARE CODURI TEMPORARE
 ======================================================= */
-export async function sendSms({ to, message }) {
+const otpStore = new Map(); // phone -> { code, expires }
+
+/* =======================================================
+   🧩 FUNCȚIE: trimite SMS OTP
+======================================================= */
+export async function sendOtpSMS(phone) {
   try {
-    if (!SMSLINK_BASE_URL || !SMSLINK_CONNECTION_ID || !SMSLINK_PASSWORD) {
-      throw new Error("Lipsesc credențialele SMSLink din .env");
+    if (!SMSLINK_CONNECTION_ID || !SMSLINK_PASSWORD) {
+      console.error("❌ SMSLink nu este configurat corect în .env");
+      return { success: false, error: "Config SMSLink lipsă" };
     }
 
-    // 🧹 Curățăm și formăm numărul în format 407xxxxxxxx
-    const cleanNumber = to.replace(/^0/, "4").replace(/\D/g, "");
-    const encodedMsg = encodeURIComponent(message);
+    // cod random 6 cifre
+    const code = Math.floor(100000 + Math.random() * 900000);
+    const message = `Codul tău de autentificare este: ${code}`;
 
-    // 🧩 Construim URL-ul de trimitere
-    const url = `${SMSLINK_BASE_URL}?connection_id=${encodeURIComponent(
-      SMSLINK_CONNECTION_ID
-    )}&password=${encodeURIComponent(
-      SMSLINK_PASSWORD
-    )}&to=${encodeURIComponent(cleanNumber)}&from=${encodeURIComponent(
-      SMSLINK_SENDER || "Oltenita"
-    )}&message=${encodedMsg}`;
+    // trimite cererea către SMSLink
+    const params = new URLSearchParams({
+      connection_id: SMSLINK_CONNECTION_ID,
+      password: SMSLINK_PASSWORD,
+      to: phone,
+      message,
+      sender: SMSLINK_SENDER,
+    });
 
-    console.log("🌐 URL SMSLink:", url);
+    const response = await axios.post(SMSLINK_BASE_URL, params);
+    console.log("📤 SMSLink răspuns:", response.data);
 
-    const { data } = await axios.get(url, { timeout: 15000 });
-    console.log("📨 Răspuns SMSLink:", data);
+    // salvează OTP local (valabil 5 minute)
+    otpStore.set(phone, { code: code.toString(), expires: Date.now() + 5 * 60 * 1000 });
 
-    if (data.startsWith("ERROR")) throw new Error(data);
-    return data;
+    return { success: true };
   } catch (err) {
     console.error("❌ Eroare SMSLink:", err.message);
-    throw new Error("Eroare la trimiterea SMS-ului");
+    return { success: false, error: "Eroare trimitere SMS" };
   }
 }
 
 /* =======================================================
-   🔢 Generare OTP (6 cifre)
+   🧩 FUNCȚIE: verifică OTP
 ======================================================= */
-export function generateOtp(length = 6) {
-  const n = crypto.randomInt(0, 10 ** length);
-  return String(n).padStart(length, "0");
+export async function verifyOtpSMS(phone, code) {
+  const entry = otpStore.get(phone);
+  if (!entry) return { success: false, error: "Codul nu există sau a expirat." };
+
+  if (Date.now() > entry.expires) {
+    otpStore.delete(phone);
+    return { success: false, error: "Codul a expirat." };
+  }
+
+  if (entry.code !== code.toString()) {
+    return { success: false, error: "Cod incorect." };
+  }
+
+  // verificare reușită — ștergem codul
+  otpStore.delete(phone);
+  return { success: true };
 }
 
 /* =======================================================
-   🔐 Hash OTP pentru stocare sigură
+   🧾 INFO CONFIG LA PORNIRE (DOAR PENTRU DEBUG)
 ======================================================= */
-export function hashOtp(otp) {
-  return crypto.createHash("sha256").update(otp).digest("hex");
-}
+console.log("🔍 SMSLink config:");
+console.log("   📡 BASE_URL:", SMSLINK_BASE_URL || "❌ lipsă");
+console.log("   🆔 CONNECTION_ID:", SMSLINK_CONNECTION_ID ? "OK" : "❌ lipsă");
+console.log("   🔑 PASSWORD:", SMSLINK_PASSWORD ? "OK" : "❌ lipsă");
+console.log("   ✉️ SENDER:", SMSLINK_SENDER);
