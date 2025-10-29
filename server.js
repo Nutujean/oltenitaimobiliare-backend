@@ -12,7 +12,7 @@ import shareFacebookRoute from "./routes/shareFacebookRoute.js";
 import sitemapRoute from "./routes/sitemapRoutes.js";
 
 // 🔹 Rute
-import authRoutes from "./routes/authRoutes.js";
+
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
