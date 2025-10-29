@@ -1,5 +1,5 @@
 /* =======================================================
-   ✅ SERVER FINAL — API Oltenița Imobiliare (stabil)
+   ✅ SERVER FINAL — API Oltenița Imobiliare
 ======================================================= */
 
 import express from "express";
@@ -7,13 +7,10 @@ import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import cron from "node-cron";
-import fetch from "node-fetch";
 import https from "https";
-import path from "path";
-import { fileURLToPath } from "url";
 import Listing from "./models/Listing.js";
 
-// 🔹 Importuri rute
+// 🔹 Import rute
 import phoneAuthRoutes from "./routes/phoneAuth.js";
 import authRoutes from "./routes/authRoutes.js";
 import listingsRoutes from "./routes/listings.js";
@@ -30,12 +27,18 @@ const app = express();
 /* =======================================================
    🌐 CORS + BODY PARSERS
 ======================================================= */
-app.use(cors());
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 /* =======================================================
-   🧭 REDIRECȚIONARE DOMENIU
+   🧭 REDIRECȚIONARE DOMENIU SHARE → API
 ======================================================= */
 app.use((req, res, next) => {
   const host = req.headers.host || "";
@@ -64,12 +67,16 @@ mongoose
   });
 
 /* =======================================================
-   🧩 RUTE API
+   🧩 RUTE API — MONTATE ÎN ORDINEA CORECTĂ
 ======================================================= */
-app.use("/api/phone", phoneAuthRoutes); // ✅ SMS Login/Register
-console.log("✅ phoneAuthRoutes încărcat corect pe server");
+console.log("🟢 Încep montarea rutelor Express...");
+
+app.use("/api/phone", phoneAuthRoutes);
+console.log("✅ phoneAuthRoutes montat la /api/phone");
 
 app.use("/api/auth", authRoutes);
+console.log("✅ authRoutes montat la /api/auth");
+
 app.use("/api/users", usersRoutes);
 app.use("/api/listings", listingsRoutes);
 app.use("/api/stripe", stripeRoutes);
@@ -78,8 +85,7 @@ app.use("/", shareRoutes);
 app.use("/", shareFacebookRoute);
 app.use("/", sitemapRoute);
 
-console.log("✅ authRoutes încărcat corect pe server");
-console.log("✅ Toate rutele API montate corect");
+console.log("✔ Toate rutele Express au fost montate corect.");
 
 /* =======================================================
    🧭 HEALTH CHECK
