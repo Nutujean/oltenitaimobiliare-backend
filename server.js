@@ -1,18 +1,21 @@
 /* =======================================================
-   ✅ SERVER FINAL — API Oltenița Imobiliare
+   ✅ SERVER FINAL — API Oltenița Imobiliare (stabil)
 ======================================================= */
+
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import mongoose from "mongoose";
+import cron from "node-cron";
+import fetch from "node-fetch";
+import https from "https";
+import path from "path";
+import { fileURLToPath } from "url";
+import Listing from "./models/Listing.js";
+
+// 🔹 Importuri rute
 import phoneAuthRoutes from "./routes/phoneAuth.js";
 import authRoutes from "./routes/authRoutes.js";
-import listingsRoutes from "./routes/listings.js";
-import usersRoutes from "./routes/users.js";
-import stripeRoutes from "./routes/stripeRoutes.js";
-import contactRoutes from "./routes/contactRoutes.js";
-import shareRoutes from "./routes/shareRoute.js";
-import shareFacebookRoute from "./routes/shareFacebookRoute.js";
-import sitemapRoute from "./routes/sitemapRoutes.js";
-
-// 🔹 Rute
-
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
@@ -72,30 +75,8 @@ app.use("/api/contact", contactRoutes);
 app.use("/", shareRoutes);
 app.use("/", shareFacebookRoute);
 app.use("/", sitemapRoute);
-console.log("🧩 phoneAuthRoutes montat la /api/phone");
-console.log("🧩 Chei router phoneAuth:", Object.keys(phoneAuthRoutes));
 
-console.log("✅ Toate rutele Express au fost montate!");
-
-// 🧭 Diagnostic — listăm rutele Express
-setTimeout(() => {
-  const routes = [];
-  app._router.stack.forEach((middleware) => {
-    if (middleware.route) {
-      routes.push(middleware.route.path);
-    } else if (middleware.name === "router" && middleware.handle.stack) {
-      middleware.handle.stack.forEach((handler) => {
-        if (handler.route && handler.route.path) {
-          routes.push(`${middleware.regexp} → ${handler.route.path}`);
-        }
-      });
-    }
-  });
-
-  console.log("🔍 Lista rutelor Express înregistrate:");
-  if (routes.length === 0) console.log("⚠️ Nicio rută activă!");
-  routes.forEach((r) => console.log("➡️ ", r));
-}, 2000);
+console.log("✅ Toate rutele API montate corect");
 
 /* =======================================================
    🧭 HEALTH CHECK
