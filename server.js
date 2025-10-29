@@ -67,6 +67,8 @@ mongoose
    🧩 RUTE API
 ======================================================= */
 app.use("/api/phone", phoneAuthRoutes); // ✅ SMS Login/Register
+console.log("✅ phoneAuthRoutes încărcat corect pe server");
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/listings", listingsRoutes);
@@ -76,6 +78,7 @@ app.use("/", shareRoutes);
 app.use("/", shareFacebookRoute);
 app.use("/", sitemapRoute);
 
+console.log("✅ authRoutes încărcat corect pe server");
 console.log("✅ Toate rutele API montate corect");
 
 /* =======================================================
