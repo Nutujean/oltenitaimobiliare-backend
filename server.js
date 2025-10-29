@@ -12,7 +12,6 @@ import shareFacebookRoute from "./routes/shareFacebookRoute.js";
 import sitemapRoute from "./routes/sitemapRoutes.js";
 
 // 🔹 Rute
-import phoneAuthRoutes from "./routes/phoneAuth.js";
 import authRoutes from "./routes/authRoutes.js";
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
