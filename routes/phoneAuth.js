@@ -1,7 +1,7 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
-import { sendOtpSMS, verifyOtpSMS } from "../utils/smsLink.js";
+import sendSMS from "../utils/smsLink.js";
 import User from "../models/User.js";
 
 const router = express.Router();
