@@ -1,14 +1,15 @@
 /* =======================================================
    ✅ SERVER FINAL — API Oltenița Imobiliare
 ======================================================= */
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import mongoose from "mongoose";
-import cron from "node-cron";
-import fetch from "node-fetch";
-import https from "https";
-import Listing from "./models/Listing.js";
+import phoneAuthRoutes from "./routes/phoneAuth.js";
+import authRoutes from "./routes/authRoutes.js";
+import listingsRoutes from "./routes/listings.js";
+import usersRoutes from "./routes/users.js";
+import stripeRoutes from "./routes/stripeRoutes.js";
+import contactRoutes from "./routes/contactRoutes.js";
+import shareRoutes from "./routes/shareRoute.js";
+import shareFacebookRoute from "./routes/shareFacebookRoute.js";
+import sitemapRoute from "./routes/sitemapRoutes.js";
 
 // 🔹 Rute
 import phoneAuthRoutes from "./routes/phoneAuth.js";
@@ -61,9 +62,9 @@ mongoose
   });
 
 /* =======================================================
-   🧩 RUTE API + DIAGNOSTIC EXPRESS
+   🧩 RUTE API
 ======================================================= */
-app.use("/api/phone", phoneAuthRoutes); // ✅ Login/Register prin SMS
+app.use("/api/phone", phoneAuthRoutes); // ✅ SMS Login/Register
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/listings", listingsRoutes);
@@ -72,6 +73,8 @@ app.use("/api/contact", contactRoutes);
 app.use("/", shareRoutes);
 app.use("/", shareFacebookRoute);
 app.use("/", sitemapRoute);
+console.log("🧩 phoneAuthRoutes montat la /api/phone");
+console.log("🧩 Chei router phoneAuth:", Object.keys(phoneAuthRoutes));
 
 console.log("✅ Toate rutele Express au fost montate!");
 
