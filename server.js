@@ -84,6 +84,21 @@ app.use("/api/contact", contactRoutes);
 app.use("/", shareRoutes);
 app.use("/", shareFacebookRoute);
 app.use("/", sitemapRoute);
+setTimeout(() => {
+  console.log("🔍 Rute active înregistrate:");
+  app._router.stack.forEach((layer) => {
+    if (layer.route && layer.route.path) {
+      console.log("➡️", layer.route.path);
+    } else if (layer.name === "router" && layer.handle.stack) {
+      layer.handle.stack.forEach((sub) => {
+        if (sub.route && sub.route.path) {
+          console.log("➡️", sub.route.path);
+        }
+      });
+    }
+  });
+}, 2000);
+
 
 console.log("✔ Toate rutele Express au fost montate corect.");
 
