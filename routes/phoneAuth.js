@@ -1,8 +1,8 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
 import sendOtpSMS, { verifyOtpSMS } from "../utils/smsLink.js";
+import User from "../models/User.js";
 
 const router = express.Router();
 
@@ -15,18 +15,28 @@ const otpLimiter = rateLimit({
   message: { error: "Prea multe cereri. Încearcă din nou peste 1 minut." },
 });
 
+// helper universal pt. normalizare
+function to07(value = "") {
+  let d = String(value).replace(/\D/g, "");
+  if (d.startsWith("00407")) d = d.slice(3);
+  if (d.startsWith("407")) d = d.slice(1);
+  return (d.startsWith("07") && d.length === 10) ? d : null;
+}
+
 /* =======================================================
-   📲 Trimitere OTP
+   📲 Trimite OTP
 ======================================================= */
 router.post("/send-otp", otpLimiter, async (req, res) => {
   try {
-    const { phone } = req.body;
-    if (!phone) return res.status(400).json({ error: "Număr de telefon lipsă." });
+    const n07 = to07(req.body.phone);
+    if (!n07) return res.status(400).json({ error: "Număr invalid (07xxxxxxxx)" });
 
-    const result = await sendOtpSMS(phone);
-    if (!result.success) return res.status(400).json({ error: result.error || "Eroare SMS." });
-
-    res.json({ success: true, message: "Cod trimis cu succes." });
+    const result = await sendOtpSMS(n07);
+    if (result.success) {
+      return res.json({ success: true, message: "Cod trimis cu succes." });
+    } else {
+      return res.status(400).json({ error: result.error || "Eroare la trimiterea SMS-ului." });
+    }
   } catch (err) {
     console.error("❌ Eroare send-otp:", err);
     res.status(500).json({ error: "Eroare server la trimiterea SMS-ului." });
@@ -34,38 +44,33 @@ router.post("/send-otp", otpLimiter, async (req, res) => {
 });
 
 /* =======================================================
-   🔐 Verificare OTP + Autentificare / Înregistrare
+   🔐 Verificare OTP
 ======================================================= */
 router.post("/verify-otp", async (req, res) => {
   try {
-    const { phone, code } = req.body;
-    if (!phone || !code)
-      return res.status(400).json({ error: "Telefon sau cod lipsă." });
+    const n07 = to07(req.body.phone);
+    const { code } = req.body;
 
-    const normalized = phone.replace(/\D/g, "").replace(/^0/, "4");
-    const result = await verifyOtpSMS(normalized, code);
+    if (!n07 || !code) return res.status(400).json({ error: "Telefon sau cod lipsă." });
 
+    const result = await verifyOtpSMS(n07, code);
     if (!result.success) {
       return res.status(400).json({ error: "Cod invalid sau expirat." });
     }
 
-    // ✅ verificăm dacă există deja user
-    let user = await User.findOne({ phone: normalized });
-
+    // verifică userul sau îl creează
+    let user = await User.findOne({ phone: n07 });
     if (!user) {
       user = new User({
-        name: `Utilizator ${normalized.slice(-4)}`,
-        email: `${normalized}@smslogin.local`,
+        name: `Utilizator ${n07.slice(-4)}`,
+        email: `${n07}@smslogin.local`,
         password: Math.random().toString(36).slice(-8),
-        phone: normalized,
+        phone: n07,
       });
       await user.save();
-      console.log("👤 Utilizator nou creat:", normalized);
-    } else {
-      console.log("👤 Utilizator existent autentificat:", normalized);
+      console.log("👤 Utilizator nou creat:", n07);
     }
 
-    // ✅ Token JWT
     const token = jwt.sign(
       { id: user._id, phone: user.phone },
       process.env.JWT_SECRET || "secret",
@@ -84,7 +89,7 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 /* =======================================================
-   🧪 Test — verifică dacă ruta merge
+   🧪 Test route
 ======================================================= */
 router.get("/test", (_req, res) => {
   res.json({ success: true, message: "Ruta /api/phone funcționează 🎯" });
