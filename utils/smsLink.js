@@ -8,33 +8,35 @@ const PASSWORD = process.env.SMSLINK_PASSWORD?.trim();
 const otpStore = {};
 
 /* =======================================================
-   📤 Trimite OTP prin SMSLink (fără sender explicit)
+   📤 Trimite OTP prin SMSLink — format 07xxxxxxxx
 ======================================================= */
 export default async function sendOtpSMS(phone) {
   try {
-    // Curățăm numărul — doar cifre
+    // Curățăm numărul (doar cifre)
     const cleanPhone = phone.replace(/[^\d]/g, "");
     console.log("📞 Număr primit în backend:", phone);
     console.log("📞 După curățare:", cleanPhone);
 
-    // SMSLink cere format: 07xxxxxxxx (10 cifre)
-    if (!/^(07\d{8}|407\d{8})$/.test(cleanPhone)) {
-     console.error(`❌ Număr invalid pentru SMSLink: ${cleanPhone}`);
-     return { success: false, error: "Număr invalid (folosește formatul 07xxxxxxxx sau 407xxxxxxxx)" };
-   }
+    // ✅ SMSLink cere STRICT formatul 07xxxxxxxx (10 cifre)
+    if (!/^07\d{8}$/.test(cleanPhone)) {
+      console.error(`❌ Număr invalid pentru SMSLink: ${cleanPhone}`);
+      return { success: false, error: "Număr invalid — folosește formatul 07xxxxxxxx" };
+    }
 
-    // Generăm codul OTP
+    // ✅ Generăm cod OTP
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     otpStore[cleanPhone] = code;
 
     console.log(`📤 SMSLink către ${cleanPhone}: cod ${code}`);
 
-    // ✅ Construim URL-ul corect, fără sender
+    const message = `Codul tău de autentificare Oltenita Imobiliare este ${code}. Nu divulga acest cod.`;
+
+    // ✅ Construim URL-ul corect (fără sender)
     const params = new URLSearchParams({
       connection_id: CONNECTION_ID,
       password: PASSWORD,
       to: cleanPhone,
-      message: `Codul tău de autentificare este ${code}. (Oltenita Imobiliare)`,
+      message,
     });
 
     const url = `${SMSLINK_BASE_URL}?${params.toString()}`;
@@ -47,6 +49,7 @@ export default async function sendOtpSMS(phone) {
       return { success: false, error: res.data };
     }
 
+    console.log("✅ SMSLink trimis cu succes!");
     return { success: true };
   } catch (err) {
     console.error("❌ Eroare SMSLink:", err.message);
