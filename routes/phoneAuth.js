@@ -43,9 +43,7 @@ router.post("/send-otp", otpLimiter, async (req, res) => {
   }
 });
 
-/* =======================================================
-   🔐 Verificare OTP
-======================================================= */
+// 🔐 Verificare OTP
 router.post("/verify-otp", async (req, res) => {
   try {
     const n07 = to07(req.body.phone);
@@ -58,8 +56,12 @@ router.post("/verify-otp", async (req, res) => {
       return res.status(400).json({ error: "Cod invalid sau expirat." });
     }
 
-    // verifică userul sau îl creează
-    let user = await User.findOne({ phone: n07 });
+    // 👉 verificăm dacă userul există deja după phone sau email
+    let user = await User.findOne({
+      $or: [{ phone: n07 }, { email: `${n07}@smslogin.local` }],
+    });
+
+    // dacă nu există, îl creăm
     if (!user) {
       user = new User({
         name: `Utilizator ${n07.slice(-4)}`,
@@ -69,6 +71,8 @@ router.post("/verify-otp", async (req, res) => {
       });
       await user.save();
       console.log("👤 Utilizator nou creat:", n07);
+    } else {
+      console.log("👤 Utilizator existent:", n07);
     }
 
     const token = jwt.sign(
