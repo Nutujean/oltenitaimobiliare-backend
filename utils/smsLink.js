@@ -52,3 +52,5 @@ export default async function sendOtpSMS(phone) {
     return { success: false, error: err.message };
   }
 }
+
+export { verifyOtpSMS };
