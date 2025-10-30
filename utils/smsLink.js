@@ -1,29 +1,26 @@
-import axios from "axios";
-
-const SMSLINK_BASE_URL = process.env.SMSLINK_BASE_URL?.trim();
-const CONNECTION_ID = process.env.SMSLINK_CONNECTION_ID?.trim();
-const PASSWORD = process.env.SMSLINK_PASSWORD?.trim();
-
-// 🕒 OTP-urile vor fi stocate temporar în memorie
-const otpStore = {};
-
-/* =======================================================
-   📤 Trimite OTP prin SMSLink — format 07xxxxxxxx
-======================================================= */
 export default async function sendOtpSMS(phone) {
   try {
-    // Curățăm numărul (doar cifre)
-    const cleanPhone = phone.replace(/[^\d]/g, "");
+    // Curățăm orice caractere non-numerice
+    let cleanPhone = phone.replace(/[^\d]/g, "");
     console.log("📞 Număr primit în backend:", phone);
     console.log("📞 După curățare:", cleanPhone);
 
-    // ✅ SMSLink cere STRICT formatul 07xxxxxxxx (10 cifre)
+    // ✅ Normalizează în 07xxxxxxxx indiferent de formatul primit
+    if (cleanPhone.startsWith("40")) {
+      cleanPhone = "0" + cleanPhone.slice(2); // ex: 40737564963 → 0737564963
+    } else if (cleanPhone.startsWith("0040")) {
+      cleanPhone = "0" + cleanPhone.slice(4);
+    }
+
+    console.log("📞 După normalizare finală:", cleanPhone);
+
+    // ✅ Verificare strictă format 07xxxxxxxx
     if (!/^07\d{8}$/.test(cleanPhone)) {
       console.error(`❌ Număr invalid pentru SMSLink: ${cleanPhone}`);
       return { success: false, error: "Număr invalid — folosește formatul 07xxxxxxxx" };
     }
 
-    // ✅ Generăm cod OTP
+    // Generăm OTP
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     otpStore[cleanPhone] = code;
 
@@ -31,7 +28,6 @@ export default async function sendOtpSMS(phone) {
 
     const message = `Codul tău de autentificare Oltenita Imobiliare este ${code}. Nu divulga acest cod.`;
 
-    // ✅ Construim URL-ul corect (fără sender)
     const params = new URLSearchParams({
       connection_id: CONNECTION_ID,
       password: PASSWORD,
@@ -55,19 +51,4 @@ export default async function sendOtpSMS(phone) {
     console.error("❌ Eroare SMSLink:", err.message);
     return { success: false, error: err.message };
   }
-}
-
-/* =======================================================
-   ✅ Verificare OTP local
-======================================================= */
-export async function verifyOtpSMS(phone, code) {
-  const cleanPhone = phone.replace(/[^\d]/g, "");
-  const valid = otpStore[cleanPhone] && otpStore[cleanPhone] === code;
-
-  if (valid) {
-    delete otpStore[cleanPhone];
-    return { success: true };
-  }
-
-  return { success: false };
 }
