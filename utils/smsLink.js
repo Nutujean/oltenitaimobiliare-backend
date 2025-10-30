@@ -14,6 +14,8 @@ export default async function sendOtpSMS(phone) {
   try {
     // Curățăm numărul — doar cifre
     const cleanPhone = phone.replace(/[^\d]/g, "");
+    console.log("📞 Număr primit în backend:", phone);
+    console.log("📞 După curățare:", cleanPhone);
 
     // SMSLink cere format: 07xxxxxxxx (10 cifre)
     if (!/^07\d{8}$/.test(cleanPhone)) {
