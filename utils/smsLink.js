@@ -1,37 +1,43 @@
 import axios from "axios";
 
-/* =======================================================
-   ✉️ SMSLink – Trimitere mesaje prin API
-======================================================= */
-const sendSMS = async (to, message) => {
+const SMSLINK_BASE_URL = process.env.SMSLINK_BASE_URL;
+const CONNECTION_ID = process.env.SMSLINK_CONNECTION_ID;
+const PASSWORD = process.env.SMSLINK_PASSWORD;
+const SENDER = process.env.SMSLINK_SENDER || "Oltenita";
+
+// OTP temporar stocat in memorie (pt testare)
+const otpStore = {};
+
+export default async function sendOtpSMS(phone) {
   try {
-    if (!process.env.SMSLINK_CONNECTION_ID || !process.env.SMSLINK_PASSWORD) {
-      console.warn("⚠️ SMSLink ENV lipsă — mesajul nu va fi trimis!");
-      return { success: false, warning: "Lipsă SMSLink ENV" };
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    otpStore[phone] = code;
+    console.log(`📤 SMSLink către ${phone}: cod ${code}`);
+
+    const url = `${SMSLINK_BASE_URL}?connection_id=${CONNECTION_ID}&password=${PASSWORD}&to=${encodeURIComponent(
+      phone
+    )}&message=${encodeURIComponent(
+      `Codul tău de autentificare este ${code}. (Oltenita Imobiliare)`
+    )}&sender=${SENDER}`;
+
+    const res = await axios.get(url);
+    if (res.data.includes("ERROR")) {
+      console.error("❌ SMSLink ERROR:", res.data);
+      return { success: false, error: res.data };
     }
 
-    const baseUrl =
-      process.env.SMSLINK_BASE_URL ||
-      "https://secure.smslink.ro/sms/gateway/communicate/index.php";
-
-    const sender = process.env.SMSLINK_SENDER || "Oltenita";
-
-    const params = new URLSearchParams({
-      connection_id: process.env.SMSLINK_CONNECTION_ID,
-      password: process.env.SMSLINK_PASSWORD,
-      to,
-      message,
-      sender,
-    });
-
-    const { data } = await axios.post(baseUrl, params);
-    console.log(`📤 SMSLink către ${to}:`, data);
-
-    return { success: true, response: data };
+    return { success: true };
   } catch (err) {
-    console.error("❌ Eroare trimitere SMSLink:", err.message);
+    console.error("❌ Eroare SMSLink:", err.message);
     return { success: false, error: err.message };
   }
-};
+}
 
-export default sendSMS;
+export async function verifyOtpSMS(phone, code) {
+  const valid = otpStore[phone] && otpStore[phone] === code;
+  if (valid) {
+    delete otpStore[phone];
+    return { success: true };
+  }
+  return { success: false };
+}
