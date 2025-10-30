@@ -39,34 +39,44 @@ router.post("/send-otp", otpLimiter, async (req, res) => {
 router.post("/verify-otp", async (req, res) => {
   try {
     const { phone, code } = req.body;
-    if (!phone || !code) return res.status(400).json({ error: "Telefon sau cod lipsă." });
+    if (!phone || !code)
+      return res.status(400).json({ error: "Telefon sau cod lipsă." });
 
-    const result = await verifyOtpSMS(phone, code);
-    if (!result.success) return res.status(400).json({ error: "Cod incorect sau expirat." });
+    const normalized = phone.replace(/\D/g, "").replace(/^0/, "4");
+    const result = await verifyOtpSMS(normalized, code);
 
-    // ✅ Caută userul sau creează-l
-    const normalizedPhone = phone.replace(/[^\d]/g, "").replace(/^40/, "0");
-    let user = await User.findOne({ phone: normalizedPhone });
+    if (!result.success) {
+      return res.status(400).json({ error: "Cod invalid sau expirat." });
+    }
+
+    // ✅ verificăm dacă există deja user
+    let user = await User.findOne({ phone: normalized });
 
     if (!user) {
       user = new User({
-        name: `Utilizator ${String(normalizedPhone).slice(-4)}`,
-        email: `${normalizedPhone}@smslogin.local`,
-        password: Math.random().toString(36).slice(-10),
-        phone: normalizedPhone,
+        name: `Utilizator ${normalized.slice(-4)}`,
+        email: `${normalized}@smslogin.local`,
+        password: Math.random().toString(36).slice(-8),
+        phone: normalized,
       });
       await user.save();
-      console.log("👤 Utilizator nou creat:", normalizedPhone);
+      console.log("👤 Utilizator nou creat:", normalized);
+    } else {
+      console.log("👤 Utilizator existent autentificat:", normalized);
     }
 
-    // ✅ Generează token JWT
+    // ✅ Token JWT
     const token = jwt.sign(
       { id: user._id, phone: user.phone },
       process.env.JWT_SECRET || "secret",
       { expiresIn: "7d" }
     );
 
-    res.json({ success: true, token, user: { id: user._id, phone: user.phone } });
+    res.json({
+      success: true,
+      token,
+      user: { id: user._id, phone: user.phone },
+    });
   } catch (err) {
     console.error("❌ Eroare verify-otp:", err);
     res.status(500).json({ error: "Eroare server la verificarea OTP." });
