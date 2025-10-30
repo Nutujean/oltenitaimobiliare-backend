@@ -18,10 +18,10 @@ export default async function sendOtpSMS(phone) {
     console.log("📞 După curățare:", cleanPhone);
 
     // SMSLink cere format: 07xxxxxxxx (10 cifre)
-    if (!/^07\d{8}$/.test(cleanPhone)) {
-      console.error(`❌ Număr invalid pentru SMSLink: ${cleanPhone}`);
-      return { success: false, error: "Număr invalid (folosește formatul 07xxxxxxxx)" };
-    }
+    if (!/^(07\d{8}|407\d{8})$/.test(cleanPhone)) {
+     console.error(`❌ Număr invalid pentru SMSLink: ${cleanPhone}`);
+     return { success: false, error: "Număr invalid (folosește formatul 07xxxxxxxx sau 407xxxxxxxx)" };
+   }
 
     // Generăm codul OTP
     const code = Math.floor(100000 + Math.random() * 900000).toString();
