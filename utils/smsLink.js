@@ -1,39 +1,74 @@
+// utils/smsLink.js
 import axios from "axios";
-import Otp from "../models/Otp.js";
 
-const SMSLINK_BASE_URL = process.env.SMSLINK_BASE_URL?.trim();
+const SMSLINK_BASE_URL =
+  process.env.SMSLINK_BASE_URL?.trim() ||
+  "https://secure.smslink.ro/sms/gateway/async_send.php";
 const CONNECTION_ID = process.env.SMSLINK_CONNECTION_ID?.trim();
 const PASSWORD = process.env.SMSLINK_PASSWORD?.trim();
 
-function to07(value = "") {
-  let d = String(value).replace(/\D/g, "");
-  if (d.startsWith("00407")) d = d.slice(3);
-  if (d.startsWith("407")) d = d.slice(1);
-  return (d.startsWith("07") && d.length === 10) ? d : null;
-}
+// 🔐 Stocare temporară OTP (în memorie)
+const otpStore = {};
 
+/* =======================================================
+   📤 Trimite OTP rapid prin SMSLink (optimizat)
+======================================================= */
 export default async function sendOtpSMS(phone) {
   try {
-    const n07 = to07(phone);
-    if (!n07) return { success: false, error: "Număr invalid (07xxxxxxxx)" };
+    // Curățăm numărul: păstrăm doar cifre
+    const cleanPhone = phone.replace(/[^\d]/g, "");
+    let formatted = cleanPhone;
 
+    // ✅ Adaugă prefixul „4” dacă lipsește
+    if (/^07\d{8}$/.test(cleanPhone)) {
+      formatted = `4${cleanPhone}`;
+    }
+
+    console.log("📞 Număr primit:", phone);
+    console.log("📞 După curățare:", formatted);
+
+    // Validăm formatul final
+    if (!/^407\d{8}$/.test(formatted)) {
+      console.error(`❌ Număr invalid pentru SMSLink: ${formatted}`);
+      return {
+        success: false,
+        error: "Număr invalid (folosește formatul 07xxxxxxxx sau 407xxxxxxxx)",
+      };
+    }
+
+    // 🔢 Generăm OTP random
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await Otp.findOneAndUpdate(
-      { phone: n07 },
-      { code, createdAt: new Date() },
-      { upsert: true }
-    );
+    otpStore[formatted] = code;
 
+    console.log(`📤 Trimitem OTP ${code} către ${formatted}`);
+
+    // Construim URL-ul către SMSLink (folosim async_send pentru rapiditate)
     const params = new URLSearchParams({
       connection_id: CONNECTION_ID,
       password: PASSWORD,
-      to: n07, // << IMPORTANT: 07xxxxxxxx
+      to: formatted,
       message: `Codul tău de autentificare Oltenita Imobiliare este ${code}. Nu divulga acest cod.`,
     });
 
     const url = `${SMSLINK_BASE_URL}?${params.toString()}`;
-    const res = await axios.get(url);
-    if (res.data.includes("ERROR")) return { success: false, error: res.data };
+    console.log("🔗 URL SMSLink:", url);
+
+    // 🔁 Trimitem cererea către SMSLink
+    let res = await axios.get(url, { timeout: 7000 });
+
+    // Dacă răspunsul conține eroare, încercăm o singură dată din nou
+    if (!res.data || res.data.includes("ERROR")) {
+      console.warn("⚠️ SMSLink a răspuns lent sau cu eroare, retry în 1s...");
+      await new Promise((r) => setTimeout(r, 1000));
+      res = await axios.get(url, { timeout: 7000 });
+    }
+
+    if (res.data && res.data.includes("ERROR")) {
+      console.error("❌ SMSLink ERROR:", res.data);
+      return { success: false, error: res.data };
+    }
+
+    console.log("✅ SMS trimis cu succes!");
     return { success: true };
   } catch (err) {
     console.error("❌ Eroare SMSLink:", err.message);
@@ -41,13 +76,18 @@ export default async function sendOtpSMS(phone) {
   }
 }
 
+/* =======================================================
+   ✅ Verificare OTP local
+======================================================= */
 export async function verifyOtpSMS(phone, code) {
-  const n07 = to07(phone);
-  if (!n07) return { success: false };
+  const cleanPhone = phone.replace(/[^\d]/g, "");
+  const formatted = /^07\d{8}$/.test(cleanPhone)
+    ? `4${cleanPhone}`
+    : cleanPhone;
 
-  const otp = await Otp.findOne({ phone: n07 });
-  if (otp && otp.code === code) {
-    await Otp.deleteOne({ phone: n07 });
+  const valid = otpStore[formatted] && otpStore[formatted] === code;
+  if (valid) {
+    delete otpStore[formatted];
     return { success: true };
   }
   return { success: false };
