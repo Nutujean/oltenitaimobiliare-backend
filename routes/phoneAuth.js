@@ -1,79 +1,62 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
-import sendOtpSMS, { verifyOtpSMS } from "../utils/smsLink.js";
 import User from "../models/User.js";
+import sendOtpSMS, { verifyOtpSMS } from "../utils/smsLink.js";
 
 const router = express.Router();
 
-/* =======================================================
-   ⚙️ Limitare requesturi — max 3/min per IP
-======================================================= */
+// 🔹 Limităm cererile (max. 3 pe minut / IP)
 const otpLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 3,
-  message: { error: "Prea multe cereri. Încearcă din nou peste 1 minut." },
+  message: { error: "Prea multe cereri. Încearcă peste 1 minut." },
 });
 
-// helper universal pt. normalizare
-function to07(value = "") {
-  let d = String(value).replace(/\D/g, "");
-  if (d.startsWith("00407")) d = d.slice(3);
-  if (d.startsWith("407")) d = d.slice(1);
-  return (d.startsWith("07") && d.length === 10) ? d : null;
-}
-
 /* =======================================================
-   📲 Trimite OTP
+   📤 1️⃣ Trimitere OTP pentru înregistrare
 ======================================================= */
 router.post("/send-otp", otpLimiter, async (req, res) => {
   try {
-    const n07 = to07(req.body.phone);
-    if (!n07) return res.status(400).json({ error: "Număr invalid (07xxxxxxxx)" });
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: "Telefon lipsă." });
 
-    const result = await sendOtpSMS(n07);
-    if (result.success) {
-      return res.json({ success: true, message: "Cod trimis cu succes." });
-    } else {
-      return res.status(400).json({ error: result.error || "Eroare la trimiterea SMS-ului." });
-    }
+    const result = await sendOtpSMS(phone);
+    if (!result.success) return res.status(400).json({ error: result.error });
+
+    res.json({ success: true, message: "Cod OTP trimis cu succes!" });
   } catch (err) {
     console.error("❌ Eroare send-otp:", err);
-    res.status(500).json({ error: "Eroare server la trimiterea SMS-ului." });
+    res.status(500).json({ error: "Eroare server la trimiterea OTP." });
   }
 });
 
-// 🔐 Verificare OTP
-router.post("/verify-otp", async (req, res) => {
+/* =======================================================
+   🧾 2️⃣ Înregistrare nouă (cu email + nume + telefon)
+======================================================= */
+router.post("/register", async (req, res) => {
   try {
-    const n07 = to07(req.body.phone);
-    const { code } = req.body;
+    const { name, email, phone, code } = req.body;
 
-    if (!n07 || !code) return res.status(400).json({ error: "Telefon sau cod lipsă." });
+    if (!name || !email || !phone || !code)
+      return res.status(400).json({ error: "Toate câmpurile sunt obligatorii." });
 
-    const result = await verifyOtpSMS(n07, code);
-    if (!result.success) {
+    const verified = await verifyOtpSMS(phone, code);
+    if (!verified.success)
       return res.status(400).json({ error: "Cod invalid sau expirat." });
-    }
 
-    // 👉 verificăm dacă userul există deja după phone sau email
-    let user = await User.findOne({
-      $or: [{ phone: n07 }, { email: `${n07}@smslogin.local` }],
+    // verificăm dacă există deja contul
+    let existing = await User.findOne({ phone });
+    if (existing)
+      return res.status(400).json({ error: "Numărul de telefon este deja înregistrat." });
+
+    const user = new User({
+      name,
+      email,
+      phone,
+      password: Math.random().toString(36).slice(-8),
     });
-
-    // dacă nu există, îl creăm
-    if (!user) {
-      user = new User({
-        name: `Utilizator ${n07.slice(-4)}`,
-        email: `${n07}@smslogin.local`,
-        password: Math.random().toString(36).slice(-8),
-        phone: n07,
-      });
-      await user.save();
-      console.log("👤 Utilizator nou creat:", n07);
-    } else {
-      console.log("👤 Utilizator existent:", n07);
-    }
+    await user.save();
 
     const token = jwt.sign(
       { id: user._id, phone: user.phone },
@@ -81,22 +64,49 @@ router.post("/verify-otp", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.json({
-      success: true,
-      token,
-      user: { id: user._id, phone: user.phone },
-    });
+    res.json({ success: true, token, user });
   } catch (err) {
-    console.error("❌ Eroare verify-otp:", err);
-    res.status(500).json({ error: "Eroare server la verificarea OTP." });
+    console.error("❌ Eroare înregistrare:", err);
+    res.status(500).json({ error: "Eroare server la înregistrare." });
   }
 });
 
 /* =======================================================
-   🧪 Test route
+   🔑 3️⃣ Logare simplă prin SMS OTP
 ======================================================= */
-router.get("/test", (_req, res) => {
-  res.json({ success: true, message: "Ruta /api/phone funcționează 🎯" });
+router.post("/login", async (req, res) => {
+  try {
+    const { phone, code } = req.body;
+
+    if (!phone || !code)
+      return res.status(400).json({ error: "Telefon și cod OTP necesare." });
+
+    const verified = await verifyOtpSMS(phone, code);
+    if (!verified.success)
+      return res.status(400).json({ error: "Cod invalid sau expirat." });
+
+    const user = await User.findOne({ phone });
+    if (!user)
+      return res.status(404).json({ error: "Nu există cont pentru acest număr." });
+
+    const token = jwt.sign(
+      { id: user._id, phone: user.phone },
+      process.env.JWT_SECRET || "secret",
+      { expiresIn: "7d" }
+    );
+
+    res.json({ success: true, token, user });
+  } catch (err) {
+    console.error("❌ Eroare login:", err);
+    res.status(500).json({ error: "Eroare server la logare." });
+  }
 });
+
+/* =======================================================
+   🧪 Test
+======================================================= */
+router.get("/test", (_req, res) =>
+  res.json({ success: true, message: "Ruta /api/phone funcționează 🎯" })
+);
 
 export default router;

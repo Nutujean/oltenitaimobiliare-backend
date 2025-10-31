@@ -5,47 +5,35 @@ const SMSLINK_BASE_URL = process.env.SMSLINK_BASE_URL?.trim();
 const CONNECTION_ID = process.env.SMSLINK_CONNECTION_ID?.trim();
 const PASSWORD = process.env.SMSLINK_PASSWORD?.trim();
 
-/* =======================================================
-   📤 Trimite OTP prin SMSLink și salvează în MongoDB
-======================================================= */
+function to07(value = "") {
+  let d = String(value).replace(/\D/g, "");
+  if (d.startsWith("00407")) d = d.slice(3);
+  if (d.startsWith("407")) d = d.slice(1);
+  return (d.startsWith("07") && d.length === 10) ? d : null;
+}
+
 export default async function sendOtpSMS(phone) {
   try {
-    const cleanPhone = phone.replace(/[^\d]/g, "");
+    const n07 = to07(phone);
+    if (!n07) return { success: false, error: "Număr invalid (07xxxxxxxx)" };
 
-    // ✅ SMSLink acceptă doar formatul 07xxxxxxxx
-    if (!/^(07\d{8})$/.test(cleanPhone)) {
-      console.error(`❌ Număr invalid pentru SMSLink: ${cleanPhone}`);
-      return { success: false, error: "Număr invalid (folosește formatul 07xxxxxxxx)" };
-    }
-
-    // ✅ Generăm codul OTP și îl salvăm în MongoDB
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await Otp.findOneAndUpdate(
-      { phone: cleanPhone },
+      { phone: n07 },
       { code, createdAt: new Date() },
       { upsert: true }
     );
 
-    console.log(`📞 Trimitem OTP către: ${cleanPhone} → cod ${code}`);
-
-    // ✅ Trimitem SMS-ul prin API
     const params = new URLSearchParams({
       connection_id: CONNECTION_ID,
       password: PASSWORD,
-      to: cleanPhone,
+      to: n07, // << IMPORTANT: 07xxxxxxxx
       message: `Codul tău de autentificare Oltenita Imobiliare este ${code}. Nu divulga acest cod.`,
     });
 
     const url = `${SMSLINK_BASE_URL}?${params.toString()}`;
-    console.log("🔗 URL SMSLink:", url);
-
     const res = await axios.get(url);
-
-    if (res.data.includes("ERROR")) {
-      console.error("❌ SMSLink ERROR:", res.data);
-      return { success: false, error: res.data };
-    }
-
+    if (res.data.includes("ERROR")) return { success: false, error: res.data };
     return { success: true };
   } catch (err) {
     console.error("❌ Eroare SMSLink:", err.message);
@@ -53,17 +41,14 @@ export default async function sendOtpSMS(phone) {
   }
 }
 
-/* =======================================================
-   ✅ Verificare OTP — verificăm codul din MongoDB
-======================================================= */
 export async function verifyOtpSMS(phone, code) {
-  const cleanPhone = phone.replace(/[^\d]/g, "");
-  const otp = await Otp.findOne({ phone: cleanPhone });
+  const n07 = to07(phone);
+  if (!n07) return { success: false };
 
+  const otp = await Otp.findOne({ phone: n07 });
   if (otp && otp.code === code) {
-    await Otp.deleteOne({ phone: cleanPhone }); // șterge codul după folosire
+    await Otp.deleteOne({ phone: n07 });
     return { success: true };
   }
-
   return { success: false };
 }
