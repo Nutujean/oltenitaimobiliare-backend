@@ -11,28 +11,25 @@ const PASSWORD = process.env.SMSLINK_PASSWORD?.trim();
 const otpStore = {};
 
 /* =======================================================
-   📤 Trimite OTP rapid prin SMSLink (optimizat)
+   📤 Trimite OTP rapid prin SMSLink (optimizat 07xxxxxxxx)
 ======================================================= */
 export default async function sendOtpSMS(phone) {
   try {
     // Curățăm numărul: păstrăm doar cifre
     const cleanPhone = phone.replace(/[^\d]/g, "");
-    let formatted = cleanPhone;
 
-    // ✅ Adaugă prefixul „4” dacă lipsește
-    if (/^07\d{8}$/.test(cleanPhone)) {
-      formatted = `4${cleanPhone}`;
-    }
+    // ✅ SMSLink vrea exact 10 cifre, format 07xxxxxxxx
+    let formatted = cleanPhone.startsWith("4") ? cleanPhone.slice(1) : cleanPhone;
 
     console.log("📞 Număr primit:", phone);
     console.log("📞 După curățare:", formatted);
 
-    // Validăm formatul final
-    if (!/^407\d{8}$/.test(formatted)) {
+    // ✅ Validăm formatul — trebuie să fie 07xxxxxxxx
+    if (!/^07\d{8}$/.test(formatted)) {
       console.error(`❌ Număr invalid pentru SMSLink: ${formatted}`);
       return {
         success: false,
-        error: "Număr invalid (folosește formatul 07xxxxxxxx sau 407xxxxxxxx)",
+        error: "Număr invalid (folosește formatul 07xxxxxxxx)",
       };
     }
 
