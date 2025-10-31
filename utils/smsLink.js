@@ -1,24 +1,20 @@
-// utils/smsLink.js
 import axios from "axios";
 
-const SMSLINK_BASE_URL =
-  process.env.SMSLINK_BASE_URL?.trim() ||
-  "https://secure.smslink.ro/sms/gateway/async_send.php";
+// 🔐 Config din .env
+const SMSLINK_BASE_URL = process.env.SMSLINK_BASE_URL?.trim();
 const CONNECTION_ID = process.env.SMSLINK_CONNECTION_ID?.trim();
 const PASSWORD = process.env.SMSLINK_PASSWORD?.trim();
 
-// 🔐 Stocare temporară OTP (în memorie)
+// 🕒 OTP-urile sunt stocate temporar (memorie locală)
 const otpStore = {};
 
 /* =======================================================
-   📤 Trimite OTP rapid prin SMSLink (optimizat 07xxxxxxxx)
+   📤 Trimite OTP rapid prin SMSLink (format 07xxxxxxxx)
 ======================================================= */
 export default async function sendOtpSMS(phone) {
   try {
     // Curățăm numărul: păstrăm doar cifre
     const cleanPhone = phone.replace(/[^\d]/g, "");
-
-    // ✅ SMSLink vrea exact 10 cifre, format 07xxxxxxxx
     let formatted = cleanPhone.startsWith("4") ? cleanPhone.slice(1) : cleanPhone;
 
     console.log("📞 Număr primit:", phone);
@@ -33,13 +29,16 @@ export default async function sendOtpSMS(phone) {
       };
     }
 
-    // 🔢 Generăm OTP random
+    // 🔢 Generăm cod OTP (6 cifre)
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore[formatted] = code;
+    otpStore[formatted] = {
+      code,
+      expiresAt: Date.now() + 5 * 60 * 1000, // expiră în 5 minute
+    };
 
     console.log(`📤 Trimitem OTP ${code} către ${formatted}`);
 
-    // Construim URL-ul către SMSLink (folosim async_send pentru rapiditate)
+    // Construim URL-ul pentru SMSLink
     const params = new URLSearchParams({
       connection_id: CONNECTION_ID,
       password: PASSWORD,
@@ -50,10 +49,9 @@ export default async function sendOtpSMS(phone) {
     const url = `${SMSLINK_BASE_URL}?${params.toString()}`;
     console.log("🔗 URL SMSLink:", url);
 
-    // 🔁 Trimitem cererea către SMSLink
     let res = await axios.get(url, { timeout: 7000 });
 
-    // Dacă răspunsul conține eroare, încercăm o singură dată din nou
+    // Dacă SMSLink dă eroare, mai încearcă o dată
     if (!res.data || res.data.includes("ERROR")) {
       console.warn("⚠️ SMSLink a răspuns lent sau cu eroare, retry în 1s...");
       await new Promise((r) => setTimeout(r, 1000));
@@ -74,27 +72,48 @@ export default async function sendOtpSMS(phone) {
 }
 
 /* =======================================================
-   ✅ Verificare OTP local (format unificat)
+   ✅ Verificare OTP local (cu expirare automată)
 ======================================================= */
 export async function verifyOtpSMS(phone, code) {
-  // Curățăm toate caracterele non-numerice
   let cleanPhone = phone.replace(/[^\d]/g, "");
-
-  // Eliminăm prefixul 4 dacă există — unificăm cu formatul de trimitere
-  if (cleanPhone.startsWith("4")) {
-    cleanPhone = cleanPhone.slice(1);
-  }
+  if (cleanPhone.startsWith("4")) cleanPhone = cleanPhone.slice(1);
 
   console.log("🔍 Verificare OTP pentru:", cleanPhone, "cod:", code);
 
-  const valid = otpStore[cleanPhone] && otpStore[cleanPhone] === code;
+  const entry = otpStore[cleanPhone];
 
-  if (valid) {
+  if (!entry) {
+    console.warn("❌ OTP inexistent pentru acest număr.");
+    return { success: false };
+  }
+
+  // verificăm dacă e expirat
+  if (Date.now() > entry.expiresAt) {
+    console.warn("⚠️ OTP expirat — șters automat.");
     delete otpStore[cleanPhone];
-    console.log("✅ OTP valid!");
+    return { success: false };
+  }
+
+  // verificăm dacă e corect
+  if (entry.code === code) {
+    console.log("✅ OTP valid — autentificare reușită!");
+    delete otpStore[cleanPhone];
     return { success: true };
   }
 
-  console.warn("❌ OTP invalid sau expirat!");
+  console.warn("❌ OTP incorect!");
   return { success: false };
 }
+
+/* =======================================================
+   🧹 Curățare automată OTP-uri expirate (la fiecare 2 min)
+======================================================= */
+setInterval(() => {
+  const now = Date.now();
+  for (const [phone, data] of Object.entries(otpStore)) {
+    if (data.expiresAt < now) {
+      delete otpStore[phone];
+      console.log(`🧹 Șters OTP expirat pentru ${phone}`);
+    }
+  }
+}, 2 * 60 * 1000);
