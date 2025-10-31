@@ -74,18 +74,27 @@ export default async function sendOtpSMS(phone) {
 }
 
 /* =======================================================
-   ✅ Verificare OTP local
+   ✅ Verificare OTP local (format unificat)
 ======================================================= */
 export async function verifyOtpSMS(phone, code) {
-  const cleanPhone = phone.replace(/[^\d]/g, "");
-  const formatted = /^07\d{8}$/.test(cleanPhone)
-    ? `4${cleanPhone}`
-    : cleanPhone;
+  // Curățăm toate caracterele non-numerice
+  let cleanPhone = phone.replace(/[^\d]/g, "");
 
-  const valid = otpStore[formatted] && otpStore[formatted] === code;
+  // Eliminăm prefixul 4 dacă există — unificăm cu formatul de trimitere
+  if (cleanPhone.startsWith("4")) {
+    cleanPhone = cleanPhone.slice(1);
+  }
+
+  console.log("🔍 Verificare OTP pentru:", cleanPhone, "cod:", code);
+
+  const valid = otpStore[cleanPhone] && otpStore[cleanPhone] === code;
+
   if (valid) {
-    delete otpStore[formatted];
+    delete otpStore[cleanPhone];
+    console.log("✅ OTP valid!");
     return { success: true };
   }
+
+  console.warn("❌ OTP invalid sau expirat!");
   return { success: false };
 }
