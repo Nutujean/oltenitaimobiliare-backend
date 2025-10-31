@@ -1,14 +1,13 @@
-// routes/phoneAuth.js
 import express from "express";
-import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
+import jwt from "jsonwebtoken";
 import sendOtpSMS, { verifyOtpSMS } from "../utils/smsLink.js";
 import User from "../models/User.js";
 
 const router = express.Router();
 
 /* =======================================================
-   ⚙️ Limitare cereri OTP — max 3/minut/IP
+   ⚙️ Limitare cereri OTP — max 3/min/IP
 ======================================================= */
 const otpLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -17,70 +16,58 @@ const otpLimiter = rateLimit({
 });
 
 /* =======================================================
-   🧪 Test
-======================================================= */
-router.get("/test", (_req, res) =>
-  res.json({ success: true, message: "Ruta /api/phone funcționează 🎯" })
-);
-
-/* =======================================================
-   1️⃣ Trimite OTP prin SMSLink
+   📲 Trimite OTP
 ======================================================= */
 router.post("/send-otp", otpLimiter, async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone) return res.status(400).json({ error: "Număr lipsă" });
+    if (!phone) return res.status(400).json({ error: "Număr de telefon lipsă." });
 
     const result = await sendOtpSMS(phone);
-    if (result.success) return res.json({ success: true });
+    if (!result.success) return res.status(400).json(result);
 
-    res.status(400).json({ error: result.error || "Eroare la trimiterea SMS-ului" });
+    res.json({ success: true, message: "Codul a fost trimis prin SMS." });
   } catch (err) {
     console.error("❌ Eroare send-otp:", err);
-    res.status(500).json({ error: "Eroare server send-otp" });
+    res.status(500).json({ error: "Eroare server la trimiterea SMS-ului." });
   }
 });
 
 /* =======================================================
-   2️⃣ Verificare OTP + Creare / Autentificare Utilizator
+   🔐 Verificare OTP + creare / autentificare user
 ======================================================= */
 router.post("/verify-otp", async (req, res) => {
   try {
-    const { phone, code, name, email } = req.body;
-    if (!phone || !code)
-      return res.status(400).json({ error: "Telefon sau cod lipsă" });
+    const { phone, code } = req.body;
+    if (!phone || !code) {
+      return res.status(400).json({ error: "Telefon sau cod lipsă." });
+    }
 
-    // ✅ verificăm OTP-ul
-    const result = await verifyOtpSMS(phone, code);
-    if (!result.success)
-      return res.status(400).json({ error: "Cod incorect sau expirat" });
+    const verified = await verifyOtpSMS(phone, code);
+    if (!verified.success) {
+      return res.status(400).json({ error: "Cod incorect sau expirat." });
+    }
 
-    // 🔍 verificăm dacă utilizatorul există deja
-    let user = await User.findOne({ phone });
+    // ⚙️ Normalizează telefonul — doar cifre
+    const cleanPhone = phone.replace(/[^\d]/g, "").replace(/^4/, "");
+
+    // 🧠 Căutăm dacă există deja utilizatorul
+    let user = await User.findOne({
+      $or: [{ phone: cleanPhone }, { email: `${cleanPhone}@smslogin.local` }],
+    });
+
+    // Dacă nu există, îl creăm
     if (!user) {
-      // dacă emailul e deja folosit de alt cont, îl ignorăm și generăm unul virtual
-      let finalEmail = email;
-      if (email) {
-        const existing = await User.findOne({ email });
-        if (existing) {
-          console.log(`⚠️ Email deja folosit (${email}) — generăm email virtual`);
-          finalEmail = `${phone}@smslogin.local`;
-        }
-      } else {
-        finalEmail = `${phone}@smslogin.local`;
-      }
-
       user = new User({
-        name: name || `Utilizator ${phone.slice(-4)}`,
-        email: finalEmail,
+        name: `Utilizator ${cleanPhone.slice(-4)}`,
+        email: `${cleanPhone}@smslogin.local`,
         password: Math.random().toString(36).slice(-8),
-        phone,
+        phone: cleanPhone,
       });
-
       await user.save();
-      console.log("👤 Utilizator nou creat:", phone);
+      console.log("👤 Utilizator nou creat:", user.email);
     } else {
-      console.log("🔁 Utilizator existent autentificat:", phone);
+      console.log("👤 Utilizator existent autentificat:", user.email);
     }
 
     // 🔑 Generăm token JWT
@@ -90,11 +77,22 @@ router.post("/verify-otp", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.json({ success: true, token, user });
+    return res.json({
+      success: true,
+      token,
+      user: { id: user._id, phone: user.phone },
+    });
   } catch (err) {
     console.error("❌ Eroare verify-otp:", err);
-    res.status(500).json({ error: "Eroare server la verificarea OTP" });
+    res.status(500).json({ error: "Eroare server la verificarea OTP." });
   }
+});
+
+/* =======================================================
+   🧪 Test — pentru verificare rapidă
+======================================================= */
+router.get("/test", (_req, res) => {
+  res.json({ success: true, message: "Ruta /api/phone funcționează 🎯" });
 });
 
 export default router;
