@@ -152,7 +152,7 @@ setInterval(() => {
   https
     .get(url, (res) => console.log(`🔁 Keep-alive ping -> ${res.statusCode}`))
     .on("error", (err) => console.error("❌ Keep-alive error:", err.message));
-}, 4 * 60 * 1000);
+}, 2 * 60 * 1000);
 
 /* =======================================================
    🚀 START SERVER
