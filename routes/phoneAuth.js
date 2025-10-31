@@ -24,7 +24,7 @@ router.get("/test", (_req, res) =>
 );
 
 /* =======================================================
-   1️⃣ Trimite OTP
+   1️⃣ Trimite OTP prin SMSLink
 ======================================================= */
 router.post("/send-otp", otpLimiter, async (req, res) => {
   try {
@@ -42,7 +42,7 @@ router.post("/send-otp", otpLimiter, async (req, res) => {
 });
 
 /* =======================================================
-   2️⃣ Verificare OTP + Creare/Autentificare utilizator
+   2️⃣ Verificare OTP + Creare / Autentificare Utilizator
 ======================================================= */
 router.post("/verify-otp", async (req, res) => {
   try {
@@ -50,19 +50,33 @@ router.post("/verify-otp", async (req, res) => {
     if (!phone || !code)
       return res.status(400).json({ error: "Telefon sau cod lipsă" });
 
+    // ✅ verificăm OTP-ul
     const result = await verifyOtpSMS(phone, code);
     if (!result.success)
       return res.status(400).json({ error: "Cod incorect sau expirat" });
 
-    // 🔍 verificăm dacă userul există deja
+    // 🔍 verificăm dacă utilizatorul există deja
     let user = await User.findOne({ phone });
     if (!user) {
+      // dacă emailul e deja folosit de alt cont, îl ignorăm și generăm unul virtual
+      let finalEmail = email;
+      if (email) {
+        const existing = await User.findOne({ email });
+        if (existing) {
+          console.log(`⚠️ Email deja folosit (${email}) — generăm email virtual`);
+          finalEmail = `${phone}@smslogin.local`;
+        }
+      } else {
+        finalEmail = `${phone}@smslogin.local`;
+      }
+
       user = new User({
         name: name || `Utilizator ${phone.slice(-4)}`,
-        email: email || `${phone}@smslogin.local`,
+        email: finalEmail,
         password: Math.random().toString(36).slice(-8),
         phone,
       });
+
       await user.save();
       console.log("👤 Utilizator nou creat:", phone);
     } else {
