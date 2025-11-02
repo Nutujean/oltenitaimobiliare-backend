@@ -33,7 +33,7 @@ export default async function sendOtpSMS(phone) {
     const params = new URLSearchParams({
      connection_id: CONNECTION_ID,
      password: PASSWORD,
-     to: cleanPhone,
+     to: cleanPhone.slice(-10),
      message: `oltenitaimobiliare.ro - Codul tău de verificare este ${code}. Valabil 5 minute.`,
    });
 
