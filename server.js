@@ -111,14 +111,18 @@ setTimeout(() => {
 console.log("✔ Toate rutele Express au fost montate corect.");
 
 /* =======================================================
-   🧭 HEALTH CHECK
+   🧭 HEALTH & PING CHECK
 ======================================================= */
 app.get("/api/health", (_req, res) =>
   res.json({ ok: true, time: new Date().toISOString() })
 );
 
+app.get("/api/ping", (_req, res) =>
+  res.json({ ok: true, endpoint: "/api/ping", time: new Date().toISOString() })
+);
+
 /* =======================================================
-   🚫 404 HANDLER
+   🚫 404 HANDLER — trebuie să fie ultimul!
 ======================================================= */
 app.use((req, res) => {
   if (req.path.startsWith("/api/"))
