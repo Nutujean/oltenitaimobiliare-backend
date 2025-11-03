@@ -1,6 +1,6 @@
 import express from "express";
 import Listing from "../models/Listing.js";
-import auth from "../middleware/auth.js";
+import auth from "../authMiddleware.js";
 
 const router = express.Router();
 
