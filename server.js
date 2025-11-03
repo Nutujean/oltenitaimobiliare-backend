@@ -81,12 +81,12 @@ console.log("✅ authRoutes montat la /api/auth");
 
 app.use("/api/users", usersRoutes);
 app.use("/api/listings", listingsRoutes);
+app.use("/api", anunturileMeleRoute);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/", shareRoutes);
 app.use("/", shareFacebookRoute);
 app.use("/", sitemapRoute);
-app.use("/api", anunturileMeleRoute);
 setTimeout(() => {
   console.log("🔍 Rute active înregistrate:");
   app._router.stack.forEach((layer) => {
