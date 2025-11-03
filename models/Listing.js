@@ -32,11 +32,18 @@ const ListingSchema = new Schema(
     surface: { type: Number, min: 0 },
     rooms: { type: Number, min: 1, max: 10 },
 
-    // 🔹 tip ofertă
+    // 🔹 tip ofertă (păstrat exact ca înainte)
     dealType: {
       type: String,
       enum: ["vanzare", "inchiriere"],
       default: "vanzare",
+    },
+
+    // 🆕 🔹 scopul anunțului — NOU câmp pentru (vand / inchiriez / cumpar / schimb)
+    intent: {
+      type: String,
+      enum: ["vand", "inchiriez", "cumpar", "schimb"],
+      default: "vand",
     },
 
     // 🔹 câmp pentru promovare
@@ -60,6 +67,7 @@ ListingSchema.index({ createdAt: -1 });
 ListingSchema.index({ category: 1 });
 ListingSchema.index({ location: 1 });
 ListingSchema.index({ dealType: 1 });
+ListingSchema.index({ intent: 1 }); // 🔹 index suplimentar pt filtrare după tip (vand/inchiriez/cumpar/schimb)
 ListingSchema.index({ expiresAt: 1 }); // 🔹 index suplimentar pt expirări
 
 export default mongoose.model("Listing", ListingSchema);
