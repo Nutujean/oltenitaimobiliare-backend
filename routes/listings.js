@@ -41,9 +41,9 @@ router.get("/", async (req, res) => {
 ======================================================= */
 router.get("/my", protect, async (req, res) => {
   try {
-    const myListings = await Listing.find({
-      user: req.user._id || req.user.id,
-    })
+    const userId = new mongoose.Types.ObjectId(req.user._id || req.user.id);
+
+    const myListings = await Listing.find({ user: userId })
       .sort({ createdAt: -1 })
       .lean();
 
