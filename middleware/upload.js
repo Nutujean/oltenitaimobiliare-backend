@@ -1,23 +1,29 @@
+// middleware/upload.js
 import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 
-// Folosim memoryStorage ca să putem trimite buffer-ul direct la Cloudinary
-const storage = multer.memoryStorage();
+// ✅ Conectare la Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-// Permitem upload pentru maxim 10 imagini simultan
+// ✅ Definim storage-ul pentru Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "oltenitaimobiliare", // numele foldărului din Cloudinary
+    allowed_formats: ["jpg", "png", "jpeg", "webp"],
+    transformation: [{ quality: "auto", fetch_format: "auto" }],
+  },
+});
+
+// ✅ Inițializăm Multer cu configurarea Cloudinary
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // limită 5MB pe fișier
-  fileFilter: (req, file, cb) => {
-    if (
-      file.mimetype === "image/jpeg" ||
-      file.mimetype === "image/png" ||
-      file.mimetype === "image/jpg"
-    ) {
-      cb(null, true);
-    } else {
-      cb(new Error("❌ Doar fișiere .jpg și .png sunt permise!"), false);
-    }
-  },
+  limits: { fileSize: 10 * 1024 * 1024 }, // max 10MB/poză
 });
 
 export default upload;
