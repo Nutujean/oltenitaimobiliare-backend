@@ -60,11 +60,6 @@ app.use((req, res, next) => {
 /* =======================================================
    📦 CONEXIUNE MONGO
 ======================================================= */
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  process.env.MONGO_URI ||
-  "mongodb://127.0.0.1:27017/oltenitaimobiliare";
-
 mongoose
   .connect(MONGODB_URI)
   .then(() => console.log("✅ MongoDB conectat"))
@@ -72,6 +67,13 @@ mongoose
     console.error("❌ Eroare MongoDB:", err);
     process.exit(1);
   });
+
+/* =======================================================
+   🔍 Test ping — trebuie să meargă mereu
+======================================================= */
+app.get("/api/ping", (req, res) => {
+  res.json({ ok: true, from: "server.js", time: new Date().toISOString() });
+});
 
 /* =======================================================
    🧩 RUTE API — MONTATE ÎN ORDINEA CORECTĂ
