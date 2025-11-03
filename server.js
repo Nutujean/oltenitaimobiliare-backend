@@ -40,7 +40,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // 🟢 Test simplu de viață API
-app.get("/ping", (req, res) => {
+app.get("api/ping", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
