@@ -5,22 +5,26 @@ import Listing from "../models/Listing.js";
 
 const router = express.Router();
 
+// 🔹 URL frontend
 const FRONTEND =
   process.env.FRONTEND_URL ||
   process.env.CLIENT_ORIGIN ||
   "https://oltenitaimobiliare.ro";
 
+// 🔹 Stripe config
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2024-06-20" })
   : null;
 
+// 🔹 Planuri de promovare
 const PLANS = {
   featured7: { label: "Promovare anunț – 7 zile", amountRON: 50 },
   featured14: { label: "Promovare anunț – 14 zile", amountRON: 85 },
   featured30: { label: "Promovare anunț – 30 zile", amountRON: 125 },
 };
 
+// 🔹 Helper pentru extragerea ID-ului din slug
 const getIdFromSlug = (slugOrId = "") => {
   const s = String(slugOrId);
   return s.includes("-") ? s.split("-").pop() : s;
@@ -36,9 +40,9 @@ router.get("/debug", (_req, res) =>
   })
 );
 
-//
-// ✅ RUTA ORIGINALĂ (POST /create-checkout-session)
-//
+/* =======================================================
+   ✅ Ruta clasică — POST /create-checkout-session
+======================================================= */
 router.post("/create-checkout-session", async (req, res) => {
   try {
     if (!stripe)
@@ -86,9 +90,9 @@ router.post("/create-checkout-session", async (req, res) => {
   }
 });
 
-//
-// ✅ VARIANTĂ NOUĂ — compatibilă cu frontend-ul tău (POST /create-checkout-session/:listingId)
-//
+/* =======================================================
+   ✅ Varianta nouă — POST /create-checkout-session/:listingId
+======================================================= */
 router.post("/create-checkout-session/:listingId", async (req, res) => {
   try {
     const { listingId } = req.params;
@@ -124,7 +128,7 @@ router.post("/create-checkout-session/:listingId", async (req, res) => {
       ],
       metadata: { listingId: String(id), plan },
       success_url: `${FRONTEND}/promovare-succes?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${FRONTEND}/anunt/${id}?payment=cancel`,
+      cancel_url: `${FRONTEND}/promovare-anulata`,
     });
 
     res.json({ url: session.url, id: session.id });
@@ -134,9 +138,9 @@ router.post("/create-checkout-session/:listingId", async (req, res) => {
   }
 });
 
-//
-// ✅ Confirmare plată (manuală, fără webhook)
-//
+/* =======================================================
+   ✅ Confirmare plată (manuală, fără webhook)
+======================================================= */
 router.get("/confirm", async (req, res) => {
   try {
     if (!stripe)

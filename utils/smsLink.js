@@ -34,7 +34,7 @@ export default async function sendOtpSMS(phone) {
      connection_id: CONNECTION_ID,
      password: PASSWORD,
      to: cleanPhone.slice(-10),
-     message: `oltenitaimobiliare.ro - Codul tău de verificare este ${code}. Valabil 5 minute.`,
+     message: `oltenitaimobiliare.ro - Codul tau de verificare este ${code}. Valabil 5 minute.`,
    });
 
     const url = `${SMSLINK_BASE_URL}?${params.toString()}`;
