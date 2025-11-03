@@ -1,115 +1,202 @@
-import { useState } from "react";
-import API_URL from "../api";
+// routes/listings.js
+import express from "express";
+import mongoose from "mongoose";
+import Listing from "../models/Listing.js";
+import { protect } from "../middleware/authMiddleware.js";
 
-export default function AdaugaAnunt() {
-  const [titlu, setTitlu] = useState("");
-  const [descriere, setDescriere] = useState("");
-  const [pret, setPret] = useState("");
-  const [categorie, setCategorie] = useState("");
-  const [dealType, setDealType] = useState("");
-  const [mesaj, setMesaj] = useState("");
-  const token = localStorage.getItem("token");
+const router = express.Router();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+/* =======================================================
+   🟩 GET toate anunțurile (public)
+======================================================= */
+router.get("/", async (req, res) => {
+  try {
+    const now = new Date();
+    const sortParam = req.query.sort || "newest";
 
-    if (!token) {
-      alert("⚠️ Trebuie să fii logat pentru a adăuga un anunț!");
-      return;
+    let sortQuery = { createdAt: -1 }; // implicit: cele mai noi
+    if (sortParam === "cheapest") sortQuery = { price: 1 };
+    if (sortParam === "expensive") sortQuery = { price: -1 };
+
+    const listings = await Listing.find({
+      $or: [
+        { featuredUntil: { $gte: now } },
+        { expiresAt: { $gte: now } },
+        { featuredUntil: null, expiresAt: null },
+        { isFree: { $exists: false } },
+      ],
+    })
+      .sort(sortQuery)
+      .lean();
+
+    res.json(listings);
+  } catch (e) {
+    console.error("Eroare la GET /api/listings:", e);
+    res.status(500).json({ error: "Eroare server la preluarea anunțurilor" });
+  }
+});
+
+/* =======================================================
+   🟩 GET anunțurile utilizatorului logat
+======================================================= */
+router.get("/my", protect, async (req, res) => {
+  try {
+    const myListings = await Listing.find({
+      user: req.user._id || req.user.id,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json(myListings);
+  } catch (e) {
+    console.error("Eroare la GET /api/listings/my:", e);
+    res.status(500).json({ error: "Eroare server la anunțurile mele" });
+  }
+});
+
+/* =======================================================
+   🟩 GET un singur anunț
+======================================================= */
+router.get("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "ID anunț invalid" });
     }
 
+    const listing = await Listing.findById(id)
+      .populate("user", "_id name email")
+      .lean();
+
+    if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
+
+    res.json(listing);
+  } catch (e) {
+    console.error("Eroare la GET /api/listings/:id:", e);
+    res.status(500).json({ error: "Eroare server la preluarea anunțului" });
+  }
+});
+
+/* =======================================================
+   🟩 POST - Adaugă un nou anunț (autentificat)
+======================================================= */
+router.post("/", protect, async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+
+    const existingFree = await Listing.findOne({
+      user: userId,
+      isFree: true,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (existingFree) {
+      return res.status(403).json({
+        error:
+          "Ai deja un anunț gratuit activ. Poți promova sau aștepta expirarea (10 zile).",
+      });
+    }
+
+    const newListing = new Listing({
+      ...req.body,
+      user: userId,
+      isFree: true,
+      expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+    });
+
+    await newListing.save();
+
+    // 🟢 Trimite email de notificare către admin
     try {
-      const res = await fetch(`${API_URL}/listings`, {
+      await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          accept: "application/json",
+          "api-key": process.env.CONTACT_PASS || process.env.BREVO_API_KEY,
+          "content-type": "application/json",
         },
         body: JSON.stringify({
-          title: titlu,
-          description: descriere,
-          price: pret,
-          category: categorie,
-          dealType,
+          sender: {
+            name: "Oltenița Imobiliare",
+            email: process.env.CONTACT_EMAIL,
+          },
+          to: [{ email: "oltenitaimobiliare@gmail.com" }],
+          subject: `📢 Anunț nou: ${newListing.title}`,
+          htmlContent: `
+            <h3>📢 Anunț nou adăugat pe site</h3>
+            <p><b>Titlu:</b> ${newListing.title}</p>
+            <p><b>Categorie:</b> ${newListing.category}</p>
+            <p><b>Localitate:</b> ${newListing.location}</p>
+            <p><b>Preț:</b> ${newListing.price} lei</p>
+            <p><b>Telefon:</b> ${newListing.phone || "nespecificat"}</p>
+            <hr>
+            <p><a href="https://oltenitaimobiliare.ro/detaliu/${newListing._id}" target="_blank">🔗 Vezi anunțul</a></p>
+          `,
         }),
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Eroare la adăugare anunț");
-
-      setMesaj("✅ Anunț adăugat cu succes!");
-      setTitlu("");
-      setDescriere("");
-      setPret("");
-      setCategorie("");
-      setDealType("");
+      console.log("📨 Email trimis către admin: anunț nou publicat.");
     } catch (err) {
-      setMesaj("❌ " + err.message);
+      console.error("❌ Eroare la trimiterea emailului admin:", err.message);
     }
-  };
 
-  return (
-    <form onSubmit={handleSubmit} className="p-6 max-w-lg mx-auto space-y-3">
-      <h1 className="text-xl font-bold mb-4">Adaugă un anunț</h1>
+    res.status(201).json(newListing);
+  } catch (e) {
+    console.error("Eroare la POST /api/listings:", e);
+    res.status(500).json({ error: "Eroare la adăugarea anunțului" });
+  }
+});
 
-      <input
-        value={titlu}
-        onChange={(e) => setTitlu(e.target.value)}
-        placeholder="Titlu"
-        className="w-full border p-2 rounded"
-      />
+/* =======================================================
+   🟩 PUT - Editează un anunț (doar proprietarul)
+======================================================= */
+router.put("/:id", protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "ID anunț invalid" });
+    }
 
-      <textarea
-        value={descriere}
-        onChange={(e) => setDescriere(e.target.value)}
-        placeholder="Descriere"
-        className="w-full border p-2 rounded"
-      />
+    const listing = await Listing.findById(id);
+    if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
 
-      <input
-        type="number"
-        value={pret}
-        onChange={(e) => setPret(e.target.value)}
-        placeholder="Preț"
-        className="w-full border p-2 rounded"
-      />
+    if (String(listing.user) !== String(req.user._id || req.user.id)) {
+      return res.status(403).json({ error: "Nu ai permisiunea să editezi acest anunț." });
+    }
 
-      <select
-        value={categorie}
-        onChange={(e) => setCategorie(e.target.value)}
-        className="w-full border p-2 rounded"
-      >
-        <option value="">Selectează categoria</option>
-        <option value="Apartamente">Apartamente</option>
-        <option value="Case">Case</option>
-        <option value="Terenuri">Terenuri</option>
-        <option value="Garsoniere">Garsoniere</option>
-      </select>
+    Object.assign(listing, req.body);
+    await listing.save();
 
-      <select
-        value={dealType}
-        onChange={(e) => setDealType(e.target.value)}
-        className="w-full border border-gray-300 rounded-lg p-2"
-      >
-        <option value="">Selectează tipul tranzacției</option>
-        <option value="vanzare">Vând</option>
-        <option value="inchiriere">Închiriez</option>
-        <option value="cumparare">Cumpăr</option>
-        <option value="schimb">Schimb</option>
-      </select>
+    res.json({ ok: true, message: "Anunț actualizat cu succes.", listing });
+  } catch (e) {
+    console.error("Eroare la PUT /api/listings/:id:", e);
+    res.status(500).json({ error: "Eroare la editarea anunțului" });
+  }
+});
 
-      <button
-        type="submit"
-        className="bg-blue-600 text-white px-4 py-2 rounded w-full hover:bg-blue-700 transition"
-      >
-        Salvează
-      </button>
+/* =======================================================
+   🟩 DELETE - Șterge un anunț (doar proprietarul)
+======================================================= */
+router.delete("/:id", protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "ID anunț invalid" });
+    }
 
-      {mesaj && (
-        <p className="text-center text-gray-700 mt-3 whitespace-pre-line">
-          {mesaj}
-        </p>
-      )}
-    </form>
-  );
-}
+    const listing = await Listing.findById(id);
+    if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
+
+    if (String(listing.user) !== String(req.user._id || req.user.id)) {
+      return res.status(403).json({ error: "Nu ai permisiunea să ștergi acest anunț." });
+    }
+
+    await listing.deleteOne();
+    res.json({ ok: true, message: "Anunț șters cu succes." });
+  } catch (e) {
+    console.error("Eroare la DELETE /api/listings/:id:", e);
+    res.status(500).json({ error: "Eroare la ștergerea anunțului" });
+  }
+});
+
+export default router;
