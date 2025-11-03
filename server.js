@@ -20,6 +20,7 @@ import contactRoutes from "./routes/contactRoutes.js";
 import shareRoutes from "./routes/shareRoute.js";
 import shareFacebookRoute from "./routes/shareFacebookRoute.js";
 import sitemapRoute from "./routes/sitemapRoutes.js";
+import anunturileMeleRoute from "./routes/anunturileMele.js";
 
 dotenv.config();
 const app = express();
@@ -85,6 +86,7 @@ app.use("/api/contact", contactRoutes);
 app.use("/", shareRoutes);
 app.use("/", shareFacebookRoute);
 app.use("/", sitemapRoute);
+app.use("/api", anunturileMeleRoute);
 setTimeout(() => {
   console.log("🔍 Rute active înregistrate:");
   app._router.stack.forEach((layer) => {
