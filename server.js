@@ -39,9 +39,11 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// 🟢 Test simplu de viață API
-app.get("api/ping", (req, res) => {
-  res.json({ ok: true, time: new Date().toISOString() });
+/* =======================================================
+   🔍 Test ping — trebuie să meargă mereu
+======================================================= */
+app.get("/api/ping", (req, res) => {
+  res.json({ ok: true, from: "server.js", time: new Date().toISOString() });
 });
 
 /* =======================================================
@@ -72,13 +74,6 @@ mongoose
     console.error("❌ Eroare MongoDB:", err);
     process.exit(1);
   });
-
-/* =======================================================
-   🔍 Test ping — trebuie să meargă mereu
-======================================================= */
-app.get("/api/ping", (req, res) => {
-  res.json({ ok: true, from: "server.js", time: new Date().toISOString() });
-});
 
 /* =======================================================
    🧩 RUTE API — MONTATE ÎN ORDINEA CORECTĂ
