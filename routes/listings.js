@@ -164,6 +164,11 @@ router.delete("/:id", protect, async (req, res) => {
 });
 
 /* =======================================================
+   🟩 Permite preflight pentru mobile (CORS)
+======================================================= */
+router.options("/:id", (req, res) => res.sendStatus(200));
+
+/* =======================================================
    🟩 GET un singur anunț după ID — trebuie să fie ULTIMA
 ======================================================= */
 router.get("/:id", async (req, res) => {
