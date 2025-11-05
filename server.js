@@ -113,6 +113,14 @@ setTimeout(() => {
 console.log("✔ Toate rutele Express au fost montate corect.");
 
 /* =======================================================
+   🚫 Fallback 404 — trebuie să fie ULTIMUL
+======================================================= */
+app.use((req, res) => {
+  console.warn("⚠️ Ruta necunoscută:", req.originalUrl);
+  res.status(404).json({ error: "Ruta API inexistentă" });
+});
+
+/* =======================================================
    🧭 HEALTH & PING CHECK
 ======================================================= */
 app.get("/api/health", (_req, res) =>
