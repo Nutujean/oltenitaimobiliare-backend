@@ -112,6 +112,12 @@ setTimeout(() => {
 
 console.log("✔ Toate rutele Express au fost montate corect.");
 
+app.use((req, res) => {
+  if (req.path.startsWith("/api/"))
+    return res.status(404).json({ error: "Ruta API inexistentă" });
+  res.status(404).send("Not found");
+});
+
 /* =======================================================
    🚫 Fallback 404 — trebuie să fie ULTIMUL
 ======================================================= */
