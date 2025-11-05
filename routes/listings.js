@@ -173,7 +173,9 @@ router.options("/:id", (req, res) => res.sendStatus(200));
 ======================================================= */
 router.get("/:id", async (req, res) => {
   try {
-    const { id } = req.params;
+    let { id } = req.params;
+    id = id.trim(); // 🧹 elimină spații invizibile sau newline
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID invalid" });
     }
