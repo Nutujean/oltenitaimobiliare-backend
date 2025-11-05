@@ -3,7 +3,7 @@ import express from "express";
 import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
 import { protect } from "../middleware/authMiddleware.js";
-import upload from "../middleware/upload.js"; // 🟢 Multer + Cloudinary
+import upload from "../middleware/upload.js";
 
 const router = express.Router();
 
@@ -14,22 +14,33 @@ router.get("/", async (req, res) => {
   try {
     const now = new Date();
     const sortParam = req.query.sort || "newest";
+    const category = req.query.category; // 🔹 mică adăugare
 
     let sortQuery = { createdAt: -1 };
     if (sortParam === "cheapest") sortQuery = { price: 1 };
     if (sortParam === "expensive") sortQuery = { price: -1 };
 
-    const listings = await Listing.find({
-      $or: [
-        { featuredUntil: { $gte: now } },
-        { expiresAt: { $gte: now } },
-        { featuredUntil: null, expiresAt: null },
-        { isFree: { $exists: false } },
-      ],
-    })
-      .sort(sortQuery)
-      .lean();
+    // 🔹 dacă există un query category, filtrăm direct
+    const filter = category
+      ? {
+          category: new RegExp(category, "i"),
+          $or: [
+            { featuredUntil: { $gte: now } },
+            { expiresAt: { $gte: now } },
+            { featuredUntil: null, expiresAt: null },
+            { isFree: { $exists: false } },
+          ],
+        }
+      : {
+          $or: [
+            { featuredUntil: { $gte: now } },
+            { expiresAt: { $gte: now } },
+            { featuredUntil: null, expiresAt: null },
+            { isFree: { $exists: false } },
+          ],
+        };
 
+    const listings = await Listing.find(filter).sort(sortQuery).lean();
     res.json(listings);
   } catch (e) {
     console.error("Eroare la GET /api/listings:", e);
@@ -61,7 +72,6 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
 
-    // Limitează un singur anunț gratuit activ
     const existingFree = await Listing.findOne({
       user: userId,
       isFree: true,
@@ -75,7 +85,6 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
       });
     }
 
-    // 🔹 Preia imaginile urcate pe Cloudinary
     const imageUrls = req.files ? req.files.map((f) => f.path) : [];
 
     const newListing = new Listing({
@@ -95,7 +104,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
 });
 
 /* =======================================================
-   🟩 PUT - Editează un anunț (cu update imagini)
+   🟩 PUT - Editează un anunț
 ======================================================= */
 router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
   try {
@@ -114,7 +123,6 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
     }
 
     const updatedData = { ...req.body };
-
     if (req.files && req.files.length > 0) {
       updatedData.images = req.files.map((f) => f.path);
     }
@@ -130,7 +138,7 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
 });
 
 /* =======================================================
-   🟩 DELETE - Șterge un anunț (doar proprietarul)
+   🟩 DELETE - Șterge un anunț
 ======================================================= */
 router.delete("/:id", protect, async (req, res) => {
   try {
@@ -157,7 +165,7 @@ router.delete("/:id", protect, async (req, res) => {
 });
 
 /* =======================================================
-   🟩 GET un singur anunț după ID (public)
+   🟩 GET un singur anunț după ID
 ======================================================= */
 router.get("/:id", async (req, res) => {
   try {
