@@ -156,4 +156,26 @@ router.delete("/:id", protect, async (req, res) => {
   }
 });
 
+/* =======================================================
+   🟩 GET un singur anunț după ID (public)
+======================================================= */
+router.get("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "ID invalid" });
+    }
+
+    const listing = await Listing.findById(id).lean();
+    if (!listing) {
+      return res.status(404).json({ error: "Anunț inexistent" });
+    }
+
+    res.json(listing);
+  } catch (e) {
+    console.error("Eroare la GET /api/listings/:id:", e);
+    res.status(500).json({ error: "Eroare server la preluarea anunțului" });
+  }
+});
+
 export default router;
