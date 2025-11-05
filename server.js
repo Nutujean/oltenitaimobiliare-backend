@@ -134,6 +134,14 @@ app.get("/api/ping", (_req, res) =>
 /* =======================================================
    🚫 404 HANDLER — trebuie să fie ultimul!
 ======================================================= */
+
+app.use("/", sitemapRoute);
+
+// ✅ Adaugă aici health check-ul
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, message: "Backend funcționează normal ✅" });
+});
+
 app.use((req, res) => {
   if (req.path.startsWith("/api/"))
     return res.status(404).json({ error: "Ruta API inexistentă" });
