@@ -14,13 +14,12 @@ router.get("/", async (req, res) => {
   try {
     const now = new Date();
     const sortParam = req.query.sort || "newest";
-    const category = req.query.category; // 🔹 mică adăugare
+    const category = req.query.category;
 
     let sortQuery = { createdAt: -1 };
     if (sortParam === "cheapest") sortQuery = { price: 1 };
     if (sortParam === "expensive") sortQuery = { price: -1 };
 
-    // 🔹 dacă există un query category, filtrăm direct
     const filter = category
       ? {
           category: new RegExp(category, "i"),
@@ -165,7 +164,7 @@ router.delete("/:id", protect, async (req, res) => {
 });
 
 /* =======================================================
-   🟩 GET un singur anunț după ID
+   🟩 GET un singur anunț după ID — trebuie să fie ULTIMA
 ======================================================= */
 router.get("/:id", async (req, res) => {
   try {
