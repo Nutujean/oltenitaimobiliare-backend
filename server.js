@@ -141,9 +141,6 @@ app.get("/api/ping", (_req, res) =>
    🌐 HEALTH + ROOT + 404 HANDLER — ULTIMELE RUTE
 ======================================================= */
 
-// ✅ Sitemap rămâne activ
-app.use("/", sitemapRoute);
-
 // ✅ Health check pentru Render/UptimeRobot
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, message: "Backend funcționează normal ✅" });
@@ -156,6 +153,9 @@ app.get("/", (req, res) => {
     time: new Date().toISOString(),
   });
 });
+
+// ✅ Sitemap rămâne activ
+app.use("/", sitemapRoute);
 
 // ✅ Fallback 404 — doar dacă nu s-a potrivit nicio rută
 app.use((req, res) => {
