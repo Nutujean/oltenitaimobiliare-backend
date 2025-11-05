@@ -135,16 +135,31 @@ app.get("/api/ping", (_req, res) =>
    🚫 404 HANDLER — trebuie să fie ultimul!
 ======================================================= */
 
+/* =======================================================
+   🌐 HEALTH + ROOT + 404 HANDLER — ULTIMELE RUTE
+======================================================= */
+
+// ✅ Sitemap rămâne activ
 app.use("/", sitemapRoute);
 
-// ✅ Adaugă aici health check-ul
+// ✅ Health check pentru Render/UptimeRobot
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, message: "Backend funcționează normal ✅" });
 });
 
+// ✅ Endpoint simplu pentru rădăcina serverului (evită „ruta necunoscută”)
+app.get("/", (req, res) => {
+  res.json({
+    message: "Oltenita Imobiliare API activ ✅",
+    time: new Date().toISOString(),
+  });
+});
+
+// ✅ Fallback 404 — doar dacă nu s-a potrivit nicio rută
 app.use((req, res) => {
-  if (req.path.startsWith("/api/"))
+  if (req.path.startsWith("/api/")) {
     return res.status(404).json({ error: "Ruta API inexistentă" });
+  }
   res.status(404).send("Not found");
 });
 
