@@ -46,6 +46,11 @@ app.get("/api/ping", (req, res) => {
   res.json({ ok: true, from: "server.js", time: new Date().toISOString() });
 });
 
+// ✅ Health check – răspunde la https://api.oltenitaimobiliare.ro/api/health
+app.get("/api/health", (req, res) => {
+  res.json({ ok: true, message: "Backend funcționează normal ✅" });
+});
+
 /* =======================================================
    🧭 REDIRECȚIONARE DOMENIU SHARE → API
 ======================================================= */
