@@ -132,10 +132,6 @@ app.get("/api/ping", (_req, res) =>
 );
 
 /* =======================================================
-   🚫 404 HANDLER — trebuie să fie ultimul!
-======================================================= */
-
-/* =======================================================
    🌐 HEALTH + ROOT + 404 HANDLER — ULTIMELE RUTE
 ======================================================= */
 
@@ -157,6 +153,7 @@ app.get("/", (req, res) => {
 
 // ✅ Fallback 404 — doar dacă nu s-a potrivit nicio rută
 app.use((req, res) => {
+  console.warn("⚠️ Ruta necunoscută:", req.originalUrl);
   if (req.path.startsWith("/api/")) {
     return res.status(404).json({ error: "Ruta API inexistentă" });
   }
