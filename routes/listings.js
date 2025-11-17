@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
 import { protect } from "../middleware/authMiddleware.js";
 import upload from "../middleware/upload.js";
+import { sendEmail } from "../utils/sendEmail.js";
 
 const router = express.Router();
 
@@ -65,7 +66,7 @@ router.get("/my", protect, async (req, res) => {
 });
 
 /* =======================================================
-   🟩 POST - Adaugă un nou anunț (cu imagini)
+   🟩 POST - Adaugă un nou anunț (cu imagini) + trimite email
 ======================================================= */
 router.post("/", protect, upload.array("images", 10), async (req, res) => {
   try {
@@ -95,6 +96,75 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     });
 
     await newListing.save();
+
+    // 🔔 După ce s-a salvat anunțul, pregătim datele pentru email
+    const userEmail = req.user?.email; // dacă authMiddleware pune email-ul aici
+    const adminEmail = "oltenitaimobiliare@gmail.com";
+
+    const titlu =
+      req.body.title || req.body.titlu || "Anunț nou pe OltenitaImobiliare.ro";
+    const locatie =
+      req.body.location || req.body.localitate || req.body.city || "";
+    const pret = req.body.price ? `${req.body.price} €` : "Nespecificat";
+    const telefon = req.body.phone || req.body.telefon || "";
+
+    const listingUrl = `https://oltenitaimobiliare.ro/anunt/${newListing._id}`;
+
+    // 🧾 HTML simplu pentru email
+    const adminHtml = `
+      <h2>📢 Anunț nou publicat pe OltenitaImobiliare.ro</h2>
+      <p><strong>Titlu:</strong> ${titlu}</p>
+      <p><strong>Locație:</strong> ${locatie}</p>
+      <p><strong>Preț:</strong> ${pret}</p>
+      <p><strong>Telefon:</strong> ${telefon}</p>
+      <p><strong>Utilizator:</strong> ${userEmail || "necunoscut"}</p>
+      <p><a href="${listingUrl}" target="_blank">Vezi anunțul în site</a></p>
+    `;
+
+    const userHtml = `
+      <h2>✅ Anunțul tău a fost publicat cu succes</h2>
+      <p>Îți mulțumim că folosești <strong>OltenitaImobiliare.ro</strong>.</p>
+      <p><strong>Titlu:</strong> ${titlu}</p>
+      <p><strong>Locație:</strong> ${locatie}</p>
+      <p><strong>Preț:</strong> ${pret}</p>
+      <p>Anunțul tău este gratuit și va fi activ timp de 10 zile.</p>
+      <p><a href="${listingUrl}" target="_blank">Vezi anunțul</a></p>
+    `;
+
+    // 📧 Email către TINE (admin)
+    (async () => {
+      try {
+        await sendEmail({
+          to: adminEmail,
+          subject: "Anunț nou pe OltenitaImobiliare.ro",
+          html: adminHtml,
+        });
+        console.log("📧 Email trimis către admin");
+      } catch (err) {
+        console.error("❌ Eroare trimitere email către admin:", err.message);
+      }
+    })();
+
+    // 📧 Email către UTILIZATOR (dacă avem email)
+    if (userEmail) {
+      (async () => {
+        try {
+          await sendEmail({
+            to: userEmail,
+            subject: "Anunțul tău a fost publicat pe OltenitaImobiliare.ro",
+            html: userHtml,
+          });
+          console.log("📧 Email trimis către utilizator");
+        } catch (err) {
+          console.error(
+            "❌ Eroare trimitere email către utilizator:",
+            err.message
+          );
+        }
+      })();
+    }
+
+    // 🔚 Răspuns către frontend
     res.status(201).json(newListing);
   } catch (e) {
     console.error("Eroare la POST /api/listings:", e);
