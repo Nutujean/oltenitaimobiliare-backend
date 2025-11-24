@@ -19,7 +19,8 @@ router.get("/share/:id", async (req, res) => {
 
     // fallback dacă NU găsim anunțul
     if (!listing) {
-      const fallbackTitle = "Oltenita Imobiliare - Anunțuri imobiliare în Oltenița și împrejurimi";
+      const fallbackTitle =
+        "Oltenita Imobiliare - Anunțuri imobiliare în Oltenița și împrejurimi";
       const fallbackDesc =
         "Descoperă cele mai noi anunțuri imobiliare din Oltenița și împrejurimi: case, apartamente, terenuri și spații comerciale.";
       const fallbackImage = "https://oltenitaimobiliare.ro/preview.jpg";
@@ -48,12 +49,11 @@ router.get("/share/:id", async (req, res) => {
 </head>
 <body>
   <script>
-    // dacă nu găsim anunțul, ducem utilizatorul pe homepage
     window.location.href = "https://oltenitaimobiliare.ro/";
   </script>
 </body>
 </html>`;
-      return res.status(200).send(html); // ✅ răspundem 200, NU 404
+      return res.status(200).send(html);
     }
 
     // ✅ Avem anunț -> generăm meta pentru el
@@ -98,18 +98,17 @@ router.get("/share/:id", async (req, res) => {
 </head>
 <body>
   <script>
-    // după ce Facebook / WhatsApp iau meta-urile, redirecționăm utilizatorul către pagina reală
     window.location.href = "${publicUrl}";
   </script>
 </body>
 </html>`;
 
-    return res.status(200).send(html); // ✅ 200 OK
+    return res.status(200).send(html);
   } catch (err) {
     console.error("Eroare la ruta /share/:id:", err);
 
-    // chiar și pe eroare trimitem fallback cu 200
-    const fallbackTitle = "Oltenita Imobiliare - Anunțuri imobiliare în Oltenița și împrejurimi";
+    const fallbackTitle =
+      "Oltenita Imobiliare - Anunțuri imobiliare în Oltenița și împrejurimi";
     const fallbackDesc =
       "Descoperă cele mai noi anunțuri imobiliare din Oltenița și împrejurimi.";
     const fallbackImage = "https://oltenitaimobiliare.ro/preview.jpg";
@@ -141,18 +140,13 @@ router.get("/share/:id", async (req, res) => {
 /* ============================================================
    🔵 REDIRECT DIRECT CĂTRE FACEBOOK
    ============================================================ */
-router.get("/fb/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const shareUrl = `https://share.oltenitaimobiliare.ro/share/${id}`;
-    const redirectUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-      shareUrl
-    )}`;
-    res.redirect(redirectUrl);
-  } catch (err) {
-    console.error("Eroare la redirect FB:", err);
-    res.redirect("https://oltenitaimobiliare.ro/");
-  }
+router.get("/fb/:id", (req, res) => {
+  const { id } = req.params;
+  const shareUrl = `https://share.oltenitaimobiliare.ro/share/${id}`;
+  const redirectUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+    shareUrl
+  )}`;
+  res.redirect(redirectUrl);
 });
 
 export default router;

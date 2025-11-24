@@ -18,7 +18,6 @@ import usersRoutes from "./routes/users.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import shareRoutes from "./routes/shareRoute.js";
-import shareFacebookRoute from "./routes/shareFacebookRoute.js";
 import sitemapRoute from "./routes/sitemapRoutes.js";
 import anunturileMeleRoute from "./routes/anunturileMele.js";
 
@@ -84,7 +83,6 @@ app.use("/api", anunturileMeleRoute);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/", shareRoutes);
-app.use("/", shareFacebookRoute);
 app.use("/", sitemapRoute);
 setTimeout(() => {
   console.log("🔍 Rute active înregistrate:");
