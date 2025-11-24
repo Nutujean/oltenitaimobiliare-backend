@@ -27,16 +27,16 @@ router.get("/share/:id", async (req, res) => {
   <meta charset="utf-8">
   <title>${listing.title}</title>
   <meta property="og:type" content="article">
-  <meta property="og:url" content="https://share.oltenitaimobiliare.ro/share/fb/${listing._id}">
-  <meta property="og:title" content="${listing.title}">
-  <meta property="og:description" content="${listing.description?.substring(0, 150) || "Vezi detalii despre acest anunț imobiliar din Oltenița"}">
-  <meta property="og:image" content="${image}?v=9">
-  <meta property="og:image:alt" content="${listing.title}">
+  <meta property="og:url" content="https://share.oltenitaimobiliare.ro/share/${listing._id}">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:image" content="${image}">
+  <meta property="og:image:alt" content="${title}">
   <meta property="fb:app_id" content="966242223397117">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="${listing.title}">
-  <meta name="twitter:description" content="${listing.description?.substring(0, 150) || ""}">
-  <meta name="twitter:image" content="${image}?v=9">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${description}">
+  <meta name="twitter:image" content="${image}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="canonical" href="https://oltenitaimobiliare.ro/anunt/${listing._id}">
 </head>
