@@ -38,6 +38,21 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// 📄 robots.txt – permitem toți botii, inclusiv Facebook
+app.get("/robots.txt", (req, res) => {
+  res
+    .type("text/plain")
+    .send(
+      [
+        "User-agent: *",
+        "Allow: /",
+        "",
+        "User-agent: facebookexternalhit",
+        "Allow: /",
+      ].join("\n")
+    );
+});
+
 /* =======================================================
    🔍 HEALTH & PING — o singură dată
 ======================================================= */
