@@ -39,13 +39,12 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 /* =======================================================
-   🔍 Test ping — trebuie să meargă mereu
+   🔍 HEALTH & PING — o singură dată
 ======================================================= */
 app.get("/api/ping", (req, res) => {
   res.json({ ok: true, from: "server.js", time: new Date().toISOString() });
 });
 
-// ✅ Health check – răspunde la https://api.oltenitaimobiliare.ro/api/health
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, message: "Backend funcționează normal ✅" });
 });
@@ -67,23 +66,49 @@ mongoose
   });
 
 /* =======================================================
-   🧩 RUTE API — MONTATE ÎN ORDINEA CORECTĂ
+   📄 robots.txt — permitem Facebook & toți botii
+======================================================= */
+app.get("/robots.txt", (req, res) => {
+  res.type("text/plain").send(
+    [
+      "User-agent: *",
+      "Allow: /",
+      "",
+      "User-agent: facebookexternalhit",
+      "Allow: /",
+    ].join("\n")
+  );
+});
+
+/* =======================================================
+   🧩 RUTE API — MONTATE ÎN ORDINE
 ======================================================= */
 console.log("🟢 Încep montarea rutelor Express...");
 
+// 🏡 RUTE SHARE — foarte important să fie devreme
+app.use("/", shareRoutes); // expune /share/:id și /fb/:id
+
+// Rute API
 app.use("/api/phone", phoneAuthRoutes);
-console.log("✅ phoneAuthRoutes montat la /api/phone");
-
 app.use("/api/auth", authRoutes);
-console.log("✅ authRoutes montat la /api/auth");
-
 app.use("/api/users", usersRoutes);
 app.use("/api/listings", listingsRoutes);
 app.use("/api", anunturileMeleRoute);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/contact", contactRoutes);
-app.use("/", shareRoutes);
+
+// Sitemap / alte rute publice
 app.use("/", sitemapRoute);
+
+// Root simplu
+app.get("/", (req, res) => {
+  res.json({
+    message: "Oltenita Imobiliare API activ ✅",
+    time: new Date().toISOString(),
+  });
+});
+
+// Log rute (opțional)
 setTimeout(() => {
   console.log("🔍 Rute active înregistrate:");
   app._router.stack.forEach((layer) => {
@@ -99,55 +124,11 @@ setTimeout(() => {
   });
 }, 2000);
 
-
 console.log("✔ Toate rutele Express au fost montate corect.");
 
-app.use((req, res) => {
-  if (req.path.startsWith("/api/"))
-    return res.status(404).json({ error: "Ruta API inexistentă" });
-  res.status(404).send("Not found");
-});
-
 /* =======================================================
-   🚫 Fallback 404 — trebuie să fie ULTIMUL
+   🚫 Fallback 404 — ULTIMUL
 ======================================================= */
-app.use((req, res) => {
-  console.warn("⚠️ Ruta necunoscută:", req.originalUrl);
-  res.status(404).json({ error: "Ruta API inexistentă" });
-});
-
-/* =======================================================
-   🧭 HEALTH & PING CHECK
-======================================================= */
-app.get("/api/health", (_req, res) =>
-  res.json({ ok: true, time: new Date().toISOString() })
-);
-
-app.get("/api/ping", (_req, res) =>
-  res.json({ ok: true, endpoint: "/api/ping", time: new Date().toISOString() })
-);
-
-/* =======================================================
-   🌐 HEALTH + ROOT + 404 HANDLER — ULTIMELE RUTE
-======================================================= */
-
-// ✅ Health check pentru Render/UptimeRobot
-app.get("/api/health", (req, res) => {
-  res.json({ ok: true, message: "Backend funcționează normal ✅" });
-});
-
-// ✅ Endpoint simplu pentru rădăcina serverului (evită „ruta necunoscută”)
-app.get("/", (req, res) => {
-  res.json({
-    message: "Oltenita Imobiliare API activ ✅",
-    time: new Date().toISOString(),
-  });
-});
-
-// ✅ Sitemap rămâne activ
-app.use("/", sitemapRoute);
-
-// ✅ Fallback 404 — doar dacă nu s-a potrivit nicio rută
 app.use((req, res) => {
   console.warn("⚠️ Ruta necunoscută:", req.originalUrl);
   if (req.path.startsWith("/api/")) {
