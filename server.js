@@ -52,19 +52,6 @@ app.get("/api/health", (req, res) => {
 });
 
 /* =======================================================
-   🧭 REDIRECȚIONARE DOMENIU SHARE → API
-======================================================= */
-app.use((req, res, next) => {
-  const host = req.headers.host || "";
-  if (host.includes("share.oltenitaimobiliare.ro")) {
-    const newUrl = `https://api.oltenitaimobiliare.ro${req.originalUrl}`;
-    console.log("🔁 Redirect SHARE → API:", newUrl);
-    return res.redirect(301, newUrl);
-  }
-  next();
-});
-
-/* =======================================================
    📦 CONEXIUNE MONGO
 ======================================================= */
 const MONGODB_URI =
