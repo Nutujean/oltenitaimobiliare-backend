@@ -72,9 +72,9 @@ router.get("/share/:id", async (req, res) => {
       "Vezi detalii despre acest anunț imobiliar din Oltenița."
     ).replace(/"/g, "&quot;");
 
-    const publicUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
+const publicUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
-    const html = `<!DOCTYPE html>
+const html = `<!DOCTYPE html>
 <html lang="ro">
 <head>
   <meta charset="utf-8">
@@ -99,11 +99,12 @@ router.get("/share/:id", async (req, res) => {
 </head>
 <body>
   <script>
-    // după ce Facebook / WhatsApp iau meta-urile, redirecționăm utilizatorul către pagina reală
+    // după ce Facebook / WhatsApp iau meta-urile, redirecționăm utilizatorul către frontend (Netlify)
     window.location.href = "${publicUrl}";
   </script>
 </body>
 </html>`;
+
 
     return res.status(200).send(html);
   } catch (err) {
