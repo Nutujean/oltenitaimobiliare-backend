@@ -17,7 +17,7 @@ import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
-import shareRoutes from "./routes/shareRoute.js";
+import shareRoutes from "./routes/shareRoute.js";      // 👈 SHARE
 import sitemapRoute from "./routes/sitemapRoutes.js";
 import anunturileMeleRoute from "./routes/anunturileMele.js";
 
@@ -81,12 +81,12 @@ app.get("/robots.txt", (req, res) => {
 });
 
 /* =======================================================
-   🧩 RUTE API — MONTATE ÎN ORDINE
+   🧩 RUTE — ÎN ORDINE
 ======================================================= */
 console.log("🟢 Încep montarea rutelor Express...");
 
 // 🏡 RUTE SHARE — foarte important să fie devreme
-app.use("/", shareRoutes); // expune /share/:id și /fb/:id
+app.use("/", shareRoutes); // 👈 Aici vine /share/:id și /fb/:id
 
 // Rute API
 app.use("/api/phone", phoneAuthRoutes);
@@ -107,22 +107,6 @@ app.get("/", (req, res) => {
     time: new Date().toISOString(),
   });
 });
-
-// Log rute (opțional)
-setTimeout(() => {
-  console.log("🔍 Rute active înregistrate:");
-  app._router.stack.forEach((layer) => {
-    if (layer.route && layer.route.path) {
-      console.log("➡️", layer.route.path);
-    } else if (layer.name === "router" && layer.handle.stack) {
-      layer.handle.stack.forEach((sub) => {
-        if (sub.route && sub.route.path) {
-          console.log("➡️", sub.route.path);
-        }
-      });
-    }
-  });
-}, 2000);
 
 console.log("✔ Toate rutele Express au fost montate corect.");
 

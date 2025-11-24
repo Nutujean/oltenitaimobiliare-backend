@@ -49,6 +49,7 @@ router.get("/share/:id", async (req, res) => {
 </head>
 <body>
   <script>
+    // dacă nu găsim anunțul, ducem utilizatorul pe homepage
     window.location.href = "https://oltenitaimobiliare.ro/";
   </script>
 </body>
@@ -98,6 +99,7 @@ router.get("/share/:id", async (req, res) => {
 </head>
 <body>
   <script>
+    // după ce Facebook / WhatsApp iau meta-urile, redirecționăm utilizatorul către pagina reală
     window.location.href = "${publicUrl}";
   </script>
 </body>
