@@ -72,31 +72,33 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
 
-    // 🔎 verificare: există deja un anunț GRATUIT activ pe acest număr de telefon?
-    const phone = req.body.phone || req.body.telefon;
+    // ------------------------------------------------------
+    // 🔒 LIMITARE: doar 1 anunț gratuit activ per număr de telefon
+    // ------------------------------------------------------
+    const phone = (req.body.phone || req.body.telefon || "").trim();
 
-    if (phone) {
-      // 🔎 verificare: există deja un anunț GRATUIT activ pe acest număr de telefon?
-const phone = (req.body.phone || req.body.telefon || "").trim();
+    if (!phone) {
+      return res.status(400).json({ error: "Numărul de telefon este obligatoriu." });
+    }
 
-if (phone) {
-  const existingFree = await Listing.findOne({
-    phone,
-    // îl considerăm gratuit dacă isFree e true SAU nu e setat deloc (anunțuri mai vechi)
-    $or: [{ isFree: true }, { isFree: { $exists: false } }],
-    // nu e deja expirat sau șters
-    status: { $nin: ["expirat", "sters"] },
-  });
-
-  if (existingFree) {
-    return res.status(400).json({
-      error: "Ai deja un anunț gratuit activ pe acest număr de telefon.",
-      message:
-        "Pentru a publica încă un anunț, acesta trebuie să fie promovat (plătit).",
-      mustPay: true,
+    const existingFree = await Listing.findOne({
+      phone,
+      $or: [{ isFree: true }, { isFree: { $exists: false } }],
+      status: { $nin: ["expirat", "sters"] },
     });
-  }
-}
+
+    if (existingFree) {
+      return res.status(400).json({
+        error: "Ai deja un anunț gratuit activ.",
+        message:
+          "Pentru a publica încă un anunț, acesta trebuie să fie promovat (plătit).",
+        mustPay: true,
+      });
+    }
+
+    // ------------------------------------------------------
+    // 🔼 Upload imagini
+    // ------------------------------------------------------
     const imageUrls = req.files ? req.files.map((f) => f.path) : [];
 
     const newListing = new Listing({
@@ -109,75 +111,54 @@ if (phone) {
 
     await newListing.save();
 
-    // 🔔 După ce s-a salvat anunțul, pregătim datele pentru email
-    const userEmail = req.user?.email; // dacă authMiddleware pune email-ul aici
+    // ------------------------------------------------------
+    // 📧 Email admin + utilizator
+    // ------------------------------------------------------
+    const userEmail = req.user?.email;
     const adminEmail = "oltenitaimobiliare@gmail.com";
 
-    const titlu =
-      req.body.title || req.body.titlu || "Anunț nou pe OltenitaImobiliare.ro";
-    const locatie =
-      req.body.location || req.body.localitate || req.body.city || "";
+    const titlu = req.body.title || "Anunț nou pe OltenitaImobiliare.ro";
+    const locatie = req.body.location || "";
     const pret = req.body.price ? `${req.body.price} €` : "Nespecificat";
-    const telefon = req.body.phone || req.body.telefon || "";
-
+    const telefon = req.body.phone || "";
     const listingUrl = `https://oltenitaimobiliare.ro/anunt/${newListing._id}`;
 
-    // 🧾 HTML simplu pentru email
     const adminHtml = `
       <h2>📢 Anunț nou publicat pe OltenitaImobiliare.ro</h2>
       <p><strong>Titlu:</strong> ${titlu}</p>
       <p><strong>Locație:</strong> ${locatie}</p>
       <p><strong>Preț:</strong> ${pret}</p>
       <p><strong>Telefon:</strong> ${telefon}</p>
-      <p><strong>Utilizator:</strong> ${userEmail || "necunoscut"}</p>
-      <p><a href="${listingUrl}" target="_blank">Vezi anunțul în site</a></p>
-    `;
-
-    const userHtml = `
-      <h2>✅ Anunțul tău a fost publicat cu succes</h2>
-      <p>Îți mulțumim că folosești <strong>OltenitaImobiliare.ro</strong>.</p>
-      <p><strong>Titlu:</strong> ${titlu}</p>
-      <p><strong>Locație:</strong> ${locatie}</p>
-      <p><strong>Preț:</strong> ${pret}</p>
-      <p>Anunțul tău este gratuit și va fi activ timp de 10 zile.</p>
       <p><a href="${listingUrl}" target="_blank">Vezi anunțul</a></p>
     `;
 
-    // 📧 Email către TINE (admin)
-    (async () => {
-      try {
-        await sendEmail({
-          to: adminEmail,
-          subject: "Anunț nou pe OltenitaImobiliare.ro",
-          html: adminHtml,
-        });
-        console.log("📧 Email trimis către admin");
-      } catch (err) {
-        console.error("❌ Eroare trimitere email către admin:", err.message);
-      }
-    })();
+    const userHtml = `
+      <h2>✅ Anunțul tău a fost publicat</h2>
+      <p><strong>${titlu}</strong></p>
+      <p><a href="${listingUrl}" target="_blank">Vezi anunțul</a></p>
+    `;
 
-    // 📧 Email către UTILIZATOR (dacă avem email)
+    // Email admin
+    sendEmail({
+      to: adminEmail,
+      subject: "Anunț nou pe OltenitaImobiliare.ro",
+      html: adminHtml,
+    }).catch((err) => console.error("MAIL ADMIN:", err));
+
+    // Email user
     if (userEmail) {
-      (async () => {
-        try {
-          await sendEmail({
-            to: userEmail,
-            subject: "Anunțul tău a fost publicat pe OltenitaImobiliare.ro",
-            html: userHtml,
-          });
-          console.log("📧 Email trimis către utilizator");
-        } catch (err) {
-          console.error(
-            "❌ Eroare trimitere email către utilizator:",
-            err.message
-          );
-        }
-      })();
+      sendEmail({
+        to: userEmail,
+        subject: "Anunțul tău a fost publicat",
+        html: userHtml,
+      }).catch((err) => console.error("MAIL USER:", err));
     }
 
-    // 🔚 Răspuns către frontend
+    // ------------------------------------------------------
+    // 🔚 Răspuns final
+    // ------------------------------------------------------
     res.status(201).json(newListing);
+
   } catch (e) {
     console.error("Eroare la POST /api/listings:", e);
     res.status(500).json({ error: "Eroare la adăugarea anunțului" });
