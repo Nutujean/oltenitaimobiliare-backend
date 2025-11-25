@@ -225,24 +225,42 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
 router.delete("/:id", protect, async (req, res) => {
   try {
     const { id } = req.params;
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: "ID anunț invalid" });
     }
 
     const listing = await Listing.findById(id);
-    if (!listing) return res.status(404).json({ error: "Anunț inexistent" });
+    if (!listing) {
+      return res.status(404).json({ error: "Anunț inexistent" });
+    }
 
-    if (String(listing.user) !== String(req.user._id || req.user.id)) {
+    const loggedUserId = String(req.user._id || req.user.id || "");
+    const listingUserId = listing.user ? String(listing.user) : null;
+
+    // 🔍 log pentru debug (se vede în Render logs)
+    console.log("🗑 DELETE listing", {
+      listingId: id,
+      listingUserId,
+      loggedUserId,
+    });
+
+    // ✅ dacă anunțul are user setat -> verificăm să fie al lui
+    if (listingUserId && listingUserId !== loggedUserId) {
       return res
         .status(403)
         .json({ error: "Nu ai permisiunea să ștergi acest anunț." });
     }
 
+    // ✅ dacă anunțul NU are user (anunț vechi), îl lăsăm să-l șteargă
     await listing.deleteOne();
-    res.json({ ok: true, message: "Anunț șters cu succes." });
+
+    return res.json({ ok: true, message: "Anunț șters cu succes." });
   } catch (e) {
     console.error("Eroare la DELETE /api/listings/:id:", e);
-    res.status(500).json({ error: "Eroare la ștergerea anunțului" });
+    return res
+      .status(500)
+      .json({ error: "Eroare la ștergerea anunțului. Încearcă din nou." });
   }
 });
 
