@@ -64,15 +64,15 @@ router.get("/my", protect, async (req, res) => {
 
 /* =======================================================
    🟩 POST - Adaugă un nou anunț (cu imagini) + trimite email
-   Regulă: max 1 anunț gratuit ACTIV per număr de telefon
+   LIMITARE: max 1 anunț per număr de telefon
 ======================================================= */
 router.post("/", protect, upload.array("images", 10), async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
 
-    // 🔒 LIMITARE: doar 1 anunț gratuit activ per număr de telefon
+    // 🔒 LIMITARE: doar 1 anunț per număr de telefon
     const phoneRaw = req.body.phone || req.body.telefon || "";
-    const phone = String(phoneRaw).trim();
+    const phone = String(phoneRaw).replace(/\s+/g, "").trim();
 
     if (!phone) {
       return res.status(400).json({
@@ -80,29 +80,27 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
       });
     }
 
-    const existingFree = await Listing.findOne({
-      phone,
-      // îl considerăm gratuit dacă isFree e true SAU nu există (anunțuri vechi)
-      $or: [{ isFree: true }, { isFree: { $exists: false } }],
-      // nu e deja expirat sau șters
-      status: { $nin: ["expirat", "sters"] },
-    });
+    console.log("📞 Limit check pentru telefon:", phone);
 
-    if (existingFree) {
+    // Dacă există DEJA ORICE anunț cu acest număr -> blocăm al doilea
+    const existing = await Listing.findOne({ phone });
+
+    if (existing) {
+      console.log("🚫 Găsit anunț existent cu acest telefon:", existing._id);
       return res.status(400).json({
-        error: "Ai deja un anunț gratuit activ.",
+        error: "Ai deja un anunț activ pe acest număr de telefon.",
         message:
-          "Pentru a publica încă un anunț, acesta trebuie să fie promovat (plătit).",
+          "Pentru a publica încă un anunț cu acest număr de telefon, acesta trebuie să fie promovat (plătit).",
         mustPay: true,
       });
     }
 
-    // 🔼 Upload imagini (Cloudinary; multer pune path-urile în req.files)
+    // 🔼 Upload imagini (Cloudinary prin Multer)
     const imageUrls = req.files ? req.files.map((f) => f.path) : [];
 
     const newListing = new Listing({
       ...req.body,
-      phone,
+      phone, // ne asigurăm că salvăm numărul curățat
       images: imageUrls,
       user: userId,
       isFree: true,
@@ -144,7 +142,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
       <p><a href="${listingUrl}" target="_blank">Vezi anunțul</a></p>
     `;
 
-    // 📧 Email către admin
+    // 📧 Email către admin (dacă nu ai BREVO_API_KEY va loga eroare, dar NU oprește salvarea)
     (async () => {
       try {
         await sendEmail({
