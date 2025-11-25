@@ -20,7 +20,6 @@ import contactRoutes from "./routes/contactRoutes.js";
 import shareRoutes from "./routes/shareRoute.js";      // 👈 SHARE
 import sitemapRoute from "./routes/sitemapRoutes.js";
 import anunturileMeleRoute from "./routes/anunturileMele.js";
-import shareFacebookRoutes from "./routes/shareFacebookRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -90,7 +89,7 @@ console.log("🟢 Încep montarea rutelor Express...");
 app.use("/", shareRoutes); // 👈 Aici vine /share/:id și /fb/:id
 
 // Rute API
-app.use("/", shareFacebookRoutes);
+
 app.use("/api/phone", phoneAuthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
