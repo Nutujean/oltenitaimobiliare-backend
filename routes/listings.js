@@ -70,7 +70,22 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
 
-    // 🔒 LIMITARE: doar 1 anunț per număr de telefon
+    // 🔒 LIMITARE: 1 singur anunț GRATUIT per cont (user)
+    const existing = await Listing.findOne({
+      user: userId,
+      isFree: true,
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        error: "Ai deja un anunț gratuit activ în contul tău.",
+        message:
+          "Pentru a publica încă un anunț din acest cont, acesta trebuie să fie promovat (plătit).",
+        mustPay: true,
+      });
+    }
+
+    // 📞 Telefon (îl curățăm, dar nu îl mai folosim la limitare)
     const phoneRaw = req.body.phone || req.body.telefon || "";
     const phone = String(phoneRaw).replace(/\s+/g, "").trim();
 
@@ -80,27 +95,12 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
       });
     }
 
-    console.log("📞 Limit check pentru telefon:", phone);
-
-    // Dacă există DEJA ORICE anunț cu acest număr -> blocăm al doilea
-    const existing = await Listing.findOne({ phone });
-
-    if (existing) {
-      console.log("🚫 Găsit anunț existent cu acest telefon:", existing._id);
-      return res.status(400).json({
-        error: "Ai deja un anunț activ pe acest număr de telefon.",
-        message:
-          "Pentru a publica încă un anunț cu acest număr de telefon, acesta trebuie să fie promovat (plătit).",
-        mustPay: true,
-      });
-    }
-
     // 🔼 Upload imagini (Cloudinary prin Multer)
     const imageUrls = req.files ? req.files.map((f) => f.path) : [];
 
     const newListing = new Listing({
       ...req.body,
-      phone, // ne asigurăm că salvăm numărul curățat
+      phone, // salvăm numărul curățat
       images: imageUrls,
       user: userId,
       isFree: true,
@@ -108,6 +108,9 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     });
 
     await newListing.save();
+
+    // 🔔 (opțional) emailuri – le lași cum le aveai deja sau cum ți le-am pus ultima oară
+    // ... restul codului tău de email + res.status(201).json(newListing);
 
     // 🔔 După ce s-a salvat anunțul, pregătim datele pentru email
     const userEmail = req.user?.email; // dacă authMiddleware pune email-ul aici
