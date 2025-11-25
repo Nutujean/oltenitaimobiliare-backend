@@ -72,17 +72,24 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
 
-    const existingFree = await Listing.findOne({
-      user: userId,
-      isFree: true,
-      expiresAt: { $gt: new Date() },
-    });
+    // 🔎 verificare: există deja un anunț GRATUIT activ pe acest număr de telefon?
+    const phone = req.body.phone || req.body.telefon;
 
-    if (existingFree) {
-      return res.status(403).json({
-        error:
-          "Ai deja un anunț gratuit activ. Poți promova sau aștepta expirarea (10 zile).",
+    if (phone) {
+      const existingFree = await Listing.findOne({
+        phone,
+        isFree: true,
+        expiresAt: { $gt: new Date() },
       });
+
+      if (existingFree) {
+        return res.status(400).json({
+          error: "Ai deja un anunț gratuit activ pe acest număr de telefon.",
+          message:
+            "Pentru a publica încă un anunț, acesta trebuie să fie promovat (plătit).",
+          mustPay: true,
+        });
+      }
     }
 
     const imageUrls = req.files ? req.files.map((f) => f.path) : [];
