@@ -1,314 +1,312 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import API_URL from "../api";
+// backend/src/routes/listings.js
+import express from "express";
+import mongoose from "mongoose";
+import Listing from "../models/Listing.js";
+import { protect } from "../middleware/authMiddleware.js";
+import upload from "../middleware/upload.js";
+import { sendEmail } from "../utils/sendEmail.js";
 
-export default function AdaugaAnunt() {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [category, setCategory] = useState("");
-  const [location, setLocation] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [intent, setIntent] = useState("vand");
+const router = express.Router();
 
-  // 👇 Aici ținem fișierele reale + preview-ul lor
-  const [images, setImages] = useState([]);        // File[]
-  const [previewUrls, setPreviewUrls] = useState([]); // string[]
+/* =======================================================
+   🟩 GET toate anunțurile (public)
+======================================================= */
+router.get("/", async (req, res) => {
+  try {
+    const now = new Date();
+    const sortParam = req.query.sort || "newest";
+    const category = req.query.category;
+    const location = req.query.location;
+    const intent = req.query.intent;
+    const q = req.query.q;
 
-  const [isLoggedIn, setIsLoggedIn] = useState(true);
-  const [error, setError] = useState("");
-  const [mustPromote, setMustPromote] = useState(false);
+    let sortQuery = { createdAt: -1 };
+    if (sortParam === "cheapest") sortQuery = { price: 1 };
+    if (sortParam === "expensive") sortQuery = { price: -1 };
+    if (sortParam === "oldest") sortQuery = { createdAt: 1 };
 
-  const navigate = useNavigate();
-  const token = localStorage.getItem("token");
+    const baseFilter = {
+      $or: [
+        { featuredUntil: { $gte: now } },
+        { expiresAt: { $gte: now } },
+        { featuredUntil: null, expiresAt: null },
+        { isFree: { $exists: false } },
+      ],
+    };
 
-  useEffect(() => {
-    if (!token || token === "undefined" || token === "null" || token.trim() === "") {
-      setIsLoggedIn(false);
-    } else {
-      setIsLoggedIn(true);
-    }
-  }, [token]);
+    const filter = { ...baseFilter };
+    if (category) filter.category = category;
+    if (location) filter.location = location;
+    if (intent) filter.intent = intent;
 
-  const localitati = [
-    "Oltenița",
-    "Chirnogi",
-    "Curcani",
-    "Spanțov",
-    "Radovanu",
-    "Ulmeni",
-    "Clătești",
-    "Negoești",
-    "Șoldanu",
-    "Luica",
-    "Nana",
-    "Budesti",
-    "Chiselet",
-    "Căscioarele",
-    "Mănăstirea",
-    "Valea Roșie",
-    "Mitreni",
-  ];
-
-  const categorii = [
-    "Apartamente",
-    "Garsoniere",
-    "Case",
-    "Terenuri",
-    "Spatii comerciale",
-    "Garaje",
-  ];
-
-  // 🔹 Când selectezi imagini
-  const handleImageChange = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-
-    setImages(files);
-
-    const previews = files.map((file) => URL.createObjectURL(file));
-    setPreviewUrls(previews);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setMustPromote(false);
-
-    if (!token) {
-      navigate("/login");
-      return;
+    if (q) {
+      filter.$or = [
+        { title: { $regex: q, $options: "i" } },
+        { description: { $regex: q, $options: "i" } },
+        { location: { $regex: q, $options: "i" } },
+      ];
     }
 
-    if (!title || !description || !price || !category || !location || !phone) {
-      alert("Completează toate câmpurile obligatorii!");
-      return;
+    const listings = await Listing.find(filter).sort(sortQuery).lean().exec();
+    res.json(listings);
+  } catch (err) {
+    console.error("❌ Eroare GET /api/listings:", err);
+    res
+      .status(500)
+      .json({ error: "Eroare server la încărcarea anunțurilor." });
+  }
+});
+
+/* =======================================================
+   🟦 GET anunțurile mele (autentificat)
+======================================================= */
+router.get("/mine", protect, async (req, res) => {
+  try {
+    const listings = await Listing.find({ user: req.user._id })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    res.json(listings);
+  } catch (err) {
+    console.error("❌ Eroare GET /api/listings/mine:", err);
+    res
+      .status(500)
+      .json({ error: "Eroare server la încărcarea anunțurilor tale." });
+  }
+});
+
+/* =======================================================
+   🟦 GET un singur anunț după ID (public)
+======================================================= */
+router.get("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ error: "ID invalid." });
     }
 
-    if (parseFloat(price) <= 0) {
-      alert("⚠️ Introdu un preț valid, mai mare de 0 euro!");
-      return;
+    const listing = await Listing.findById(id).lean().exec();
+    if (!listing) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
 
-    if (!/^0\d{9}$/.test(phone)) {
-      alert("⚠️ Număr de telefon invalid (ex: 07xxxxxxxx)");
-      return;
+    res.json(listing);
+  } catch (err) {
+    console.error("❌ Eroare GET /api/listings/:id:", err);
+    res.status(500).json({ error: "Eroare server la încărcarea anunțului." });
+  }
+});
+
+/* =======================================================
+   🟧 POST creare anunț nou (autentificat)
+   - primește FormData cu "images"
+   - limitează un singur anunț gratuit activ / user
+======================================================= */
+router.post("/", protect, upload.array("images", 10), async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      price,
+      category,
+      location,
+      phone,
+      email,
+      intent,
+    } = req.body;
+
+    if (
+      !title ||
+      !description ||
+      !price ||
+      !category ||
+      !location ||
+      !phone
+    ) {
+      return res.status(400).json({
+        error: "Te rugăm să completezi toate câmpurile obligatorii.",
+      });
     }
+
+    const numericPrice = Number(price);
+    if (!numericPrice || numericPrice <= 0) {
+      return res
+        .status(400)
+        .json({ error: "Preț invalid. Trebuie să fie mai mare decât 0." });
+    }
+
+    const now = new Date();
+    const existingFree = await Listing.findOne({
+      user: req.user._id,
+      isFree: true,
+      $or: [{ expiresAt: { $gte: now } }, { expiresAt: null }],
+    }).exec();
+
+    if (existingFree) {
+      return res.status(400).json({
+        error:
+          "Ai deja un anunț gratuit activ. Pentru a publica încă un anunț, acesta trebuie să fie promovat (plătit).",
+        mustPay: true,
+        message:
+          "Ai deja un anunț gratuit activ. Pentru a publica încă un anunț, te rugăm să alegi opțiunea de promovare.",
+      });
+    }
+
+    let imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      imageUrls = req.files.map((file) => file.path || file.secure_url);
+    }
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    const listing = new Listing({
+      user: req.user._id,
+      title,
+      description,
+      price: numericPrice,
+      category,
+      location,
+      phone,
+      email,
+      intent,
+      images: imageUrls,
+      isFree: true,
+      featured: false,
+      featuredUntil: null,
+      expiresAt,
+    });
+
+    await listing.save();
 
     try {
-      // 👇 FACEM FormData, nu JSON
-      const formData = new FormData();
-      formData.append("title", title);
-      formData.append("description", description);
-      formData.append("price", price);
-      formData.append("category", category);
-      formData.append("location", location);
-      formData.append("phone", phone);
-      formData.append("email", email);
-      formData.append("intent", intent);
-
-      // 👇 atașăm fișierele, câmpul trebuie să se numească exact "images"
-      images.forEach((file) => {
-        formData.append("images", file);
-      });
-
-      const res = await fetch(`${API_URL}/listings`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          // NU punem Content-Type aici!
-        },
-        body: formData,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (data.mustPay) {
-          setError(
-            data.message ||
-              "Ai deja un anunț gratuit activ. Pentru a publica încă un anunț, acesta trebuie să fie promovat (plătit)."
-          );
-          setMustPromote(true);
-          return;
-        }
-        throw new Error(data.error || "Eroare la adăugarea anunțului");
+      if (email) {
+        await sendEmail({
+          to: email,
+          subject: "Anunțul tău a fost publicat pe OltenitaImobiliare.ro",
+          html: `
+            <p>Bună,</p>
+            <p>Anunțul tău <strong>${title}</strong> a fost publicat cu succes pe <a href="https://oltenitaimobiliare.ro" target="_blank">OltenitaImobiliare.ro</a>.</p>
+            <p>Îți mulțumim că folosești platforma noastră!</p>
+          `,
+        });
       }
 
-      // ✅ succes
-      sessionStorage.setItem("refreshAnunturi", "true");
-      sessionStorage.setItem("anuntAdaugat", "✅ Anunțul tău a fost publicat cu succes!");
-      navigate("/anunturile-mele");
-    } catch (err) {
-      console.error("Eroare:", err);
-      setError(err.message || "A apărut o eroare la publicarea anunțului.");
+      await sendEmail({
+        to: process.env.ADMIN_EMAIL || "oltenitaimobiliare@gmail.com",
+        subject: "Anunț nou publicat",
+        html: `
+          <p>A fost publicat un anunț nou:</p>
+          <ul>
+            <li><strong>Titlu:</strong> ${title}</li>
+            <li><strong>Preț:</strong> ${numericPrice} €</li>
+            <li><strong>Localitate:</strong> ${location}</li>
+            <li><strong>Telefon:</strong> ${phone}</li>
+            <li><strong>Email:</strong> ${email || "-"}</li>
+          </ul>
+        `,
+      });
+    } catch (mailErr) {
+      console.error("❌ Eroare la trimiterea email-urilor:", mailErr);
     }
-  };
 
-  if (!isLoggedIn) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 px-4 text-center">
-        <div className="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 max-w-md">
-          <h2 className="text-2xl font-bold text-gray-800 mb-3">🔒 Acces restricționat</h2>
-          <p className="text-gray-600 mb-6">
-            Trebuie să fii logat pentru a adăuga un anunț.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={() => navigate("/login")}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-semibold w-full sm:w-auto"
-            >
-              🔐 Autentifică-te
-            </button>
-            <button
-              onClick={() => navigate("/inregistrare")}
-              className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-lg font-semibold w-full sm:w-auto"
-            >
-              🆕 Creează cont
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    res.status(201).json(listing);
+  } catch (err) {
+    console.error("❌ Eroare POST /api/listings:", err);
+    res
+      .status(500)
+      .json({ error: "Eroare server la adăugarea anunțului." });
   }
+});
 
-  return (
-    <div className="max-w-3xl mx-auto p-6 bg-white shadow-md rounded-xl">
-      <h1 className="text-2xl font-bold mb-6 text-center text-blue-700">
-        Adaugă un anunț nou
-      </h1>
+/* =======================================================
+   🟧 PUT actualizare anunț
+======================================================= */
+router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
+  try {
+    const { id } = req.params;
 
-      {error && (
-        <div
-          className={`mb-4 p-4 rounded-lg text-sm ${
-            mustPromote
-              ? "bg-yellow-100 border border-yellow-300 text-yellow-900"
-              : "bg-red-100 border border-red-300 text-red-900"
-          }`}
-        >
-          <strong>{mustPromote ? "Ai deja un anunț gratuit activ" : "Eroare"}</strong>
-          <p className="mt-1">{error}</p>
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ error: "ID invalid." });
+    }
 
-          {mustPromote && (
-            <p className="mt-2 text-xs text-yellow-800">
-              Poți păstra anunțul gratuit existent, iar acesta nou poate fi publicat ca anunț
-              promovat (plătit).
-            </p>
-          )}
-        </div>
-      )}
+    const listing = await Listing.findById(id).exec();
+    if (!listing) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit." });
+    }
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Titlu anunț"
-          required
-          className="w-full border p-2 rounded"
-        />
+    if (listing.user.toString() !== req.user._id.toString()) {
+      return res
+        .status(403)
+        .json({ error: "Nu ai dreptul să modifici acest anunț." });
+    }
 
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Descriere"
-          required
-          className="w-full border p-2 rounded min-h-[100px]"
-        />
+    const {
+      title,
+      description,
+      price,
+      category,
+      location,
+      phone,
+      email,
+      intent,
+    } = req.body;
 
-        <input
-          type="number"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          placeholder="Preț (obligatoriu, în €)"
-          required
-          min="1"
-          step="1"
-          className="w-full border p-2 rounded"
-        />
+    if (title !== undefined) listing.title = title;
+    if (description !== undefined) listing.description = description;
+    if (price !== undefined) listing.price = Number(price);
+    if (category !== undefined) listing.category = category;
+    if (location !== undefined) listing.location = location;
+    if (phone !== undefined) listing.phone = phone;
+    if (email !== undefined) listing.email = email;
+    if (intent !== undefined) listing.intent = intent;
 
-        <select
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
-          required
-          className="w-full border p-2 rounded"
-        >
-          <option value="">Selectează localitatea</option>
-          {localitati.map((loc) => (
-            <option key={loc} value={loc}>
-              {loc}
-            </option>
-          ))}
-        </select>
+    if (req.files && req.files.length > 0) {
+      listing.images = req.files.map((file) => file.path || file.secure_url);
+    }
 
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          required
-          className="w-full border p-2 rounded"
-        >
-          <option value="">Selectează categoria</option>
-          {categorii.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </select>
+    await listing.save();
+    res.json(listing);
+  } catch (err) {
+    console.error("❌ Eroare PUT /api/listings/:id:", err);
+    res
+      .status(500)
+      .json({ error: "Eroare server la actualizarea anunțului." });
+  }
+});
 
-        <select
-          value={intent}
-          onChange={(e) => setIntent(e.target.value)}
-          required
-          className="w-full border p-2 rounded"
-        >
-          <option value="vand">Vând</option>
-          <option value="inchiriez">Închiriez</option>
-          <option value="cumpar">Cumpăr</option>
-          <option value="schimb">Schimb</option>
-        </select>
+/* =======================================================
+   🟥 DELETE ștergere anunț
+======================================================= */
+router.delete("/:id", protect, async (req, res) => {
+  try {
+    const { id } = req.params;
 
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email (opțional)"
-          className="w-full border p-2 rounded"
-        />
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ error: "ID invalid." });
+    }
 
-        <input
-          type="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="Telefon (07xxxxxxxx)"
-          required
-          pattern="^0[0-9]{9}$"
-          title="Introduceți un număr valid de 10 cifre (ex: 07xxxxxxxx)"
-          className="w-full border p-2 rounded"
-        />
+    const listing = await Listing.findById(id).exec();
+    if (!listing) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit." });
+    }
 
-        <div>
-          <label className="block text-sm mb-1">Imagini</label>
-          <input type="file" multiple onChange={handleImageChange} />
-          <div className="grid grid-cols-3 gap-2 mt-2">
-            {previewUrls.map((url, i) => (
-              <img
-                key={i}
-                src={url}
-                alt=""
-                className="h-24 w-full object-cover rounded"
-              />
-            ))}
-          </div>
-        </div>
+    if (listing.user.toString() !== req.user._id.toString()) {
+      return res
+        .status(403)
+        .json({ error: "Nu ai dreptul să ștergi acest anunț." });
+    }
 
-        <button
-          type="submit"
-          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg w-full"
-        >
-          Publică anunțul
-        </button>
-      </form>
-    </div>
-  );
-}
+    await listing.deleteOne();
+    res.json({ success: true, message: "Anunț șters cu succes." });
+  } catch (err) {
+    console.error("❌ Eroare DELETE /api/listings/:id:", err);
+    res
+      .status(500)
+      .json({ error: "Eroare server la ștergerea anunțului." });
+  }
+});
+
+export default router;
