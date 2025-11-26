@@ -1,194 +1,122 @@
 import express from "express";
-import { protect, admin } from "../middleware/authMiddleware.js";
 import User from "../models/User.js";
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer"; // păstrat pentru compatibilitate
-
-console.log("✅ authRoutes încărcat corect pe server");
+import { sendSMS } from "../utils/sendSMS.js"; // tu ai deja
+import bcrypt from "bcryptjs";
 
 const router = express.Router();
 
-/* 🧩 Înregistrare utilizator */
-router.post("/register", async (req, res) => {
+// memorie temporară pentru coduri
+const codes = {}; // { telefon: cod }
+
+function generateCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/* --------------------------------------------------------
+   1️⃣  Trimite cod SMS — doar dacă userul EXISTĂ
+-------------------------------------------------------- */
+router.post("/send-code", async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+    const { phone } = req.body;
 
-    const userExists = await User.findOne({ email });
-    if (userExists)
-      return res.status(400).json({ message: "Email deja înregistrat" });
-
-    const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({ name, email, password: hashed, phone });
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
-    res.json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone || "",
-      token,
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Eroare server la înregistrare." });
-  }
-});
-
-/* 🧩 Login utilizator */
-router.post("/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    const user = await User.findOne({ email });
-    if (!user)
-      return res.status(404).json({ message: "Email inexistent." });
-
-    const match = await bcrypt.compare(password, user.password);
-    if (!match)
-      return res.status(400).json({ message: "Parolă incorectă." });
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
-
-    res.json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone || "",
-      token,
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Eroare server la autentificare." });
-  }
-});
-
-/* 🧩 Profil utilizator logat */
-router.get("/profile", protect, async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id).select("-password");
-    if (!user)
-      return res.status(404).json({ message: "Utilizator negăsit." });
-    res.json(user);
-  } catch {
-    res.status(500).json({ message: "Eroare server la profil." });
-  }
-});
-
-/* 🧩 Toți utilizatorii (doar admin) */
-router.get("/all", protect, admin, async (req, res) => {
-  const users = await User.find().select("-password");
-  res.json(users);
-});
-
-/* 🧩 Actualizare profil (nume & telefon) */
-router.put("/update/:id", protect, async (req, res) => {
-  try {
-    const { name, phone } = req.body;
-    const userId = req.params.id;
-
-    if (req.user._id.toString() !== userId && !req.user.isAdmin) {
-      return res.status(403).json({ message: "Acces interzis." });
+    if (!phone) {
+      return res.status(400).json({ message: "Telefonul este obligatoriu." });
     }
 
-    const user = await User.findById(userId);
-    if (!user)
-      return res.status(404).json({ message: "Utilizatorul nu există." });
+    const user = await User.findOne({ phone });
 
-    if (name) user.name = name;
-    if (phone) user.phone = phone;
+    if (!user) {
+      return res.status(404).json({
+        message: "Nu ai cont. Te rugăm să te înregistrezi.",
+        mustRegister: true
+      });
+    }
 
-    const updated = await user.save();
-    const userObj = updated.toObject();
-    delete userObj.password;
-    delete userObj.__v;
+    const code = generateCode();
+    codes[phone] = code;
 
-    res.json(userObj);
-  } catch {
-    res.status(500).json({ message: "Eroare la actualizare utilizator." });
+    await sendSMS(phone, `Codul tău de autentificare este ${code}`);
+
+    return res.json({ success: true, message: "Cod trimis prin SMS." });
+  } catch (e) {
+    return res.status(500).json({ message: "Eroare server." });
   }
 });
 
-/* 🟢 Verificare validitate token (pentru frontend ResetPassword.jsx) */
-router.get("/check-reset-token", async (req, res) => {
+/* --------------------------------------------------------
+   2️⃣  Verifică codul — loghează userul dacă EXISTĂ
+-------------------------------------------------------- */
+router.post("/verify-code", async (req, res) => {
   try {
-    const { token } = req.query;
-    if (!token) return res.status(400).json({ valid: false });
+    const { phone, code } = req.body;
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (!decoded?.id) return res.status(400).json({ valid: false });
+    if (!codes[phone] || codes[phone] !== code) {
+      return res.status(400).json({ message: "Cod invalid." });
+    }
 
-    const user = await User.findById(decoded.id);
-    if (!user) return res.status(400).json({ valid: false });
+    let user = await User.findOne({ phone });
 
-    return res.json({ valid: true });
-  } catch {
-    return res.status(400).json({ valid: false });
-  }
-});
+    if (!user) {
+      return res.status(404).json({
+        message: "Nu ai cont, trebuie să te înregistrezi.",
+        mustRegister: true
+      });
+    }
 
-/* 🟢 Resetare parolă - Trimitere email */
-router.post("/forgot-password", async (req, res) => {
-  try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-    if (!user)
-      return res.json({ message: "Dacă adresa există, se va trimite un email." });
+    delete codes[phone]; // ștergere cod după folosire
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "6h",
-    });
-    const resetLink = `https://oltenitaimobiliare.ro/reset-password/${token}`;
-
-    await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "accept": "application/json",
-        "api-key": process.env.CONTACT_PASS || process.env.BREVO_API_KEY,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        sender: { name: "Oltenița Imobiliare", email: process.env.CONTACT_EMAIL },
-        to: [{ email }],
-        subject: "Resetare parolă - Oltenița Imobiliare",
-        htmlContent: `
-          <h3>Bună,</h3>
-          <p>Ai cerut resetarea parolei.</p>
-          <p>Apasă pe linkul de mai jos (valabil 6 ore):</p>
-          <a href="${resetLink}" style="color:#1a73e8;word-break:break-all;">${resetLink}</a>
-          <br/><br/>
-          <p>Dacă nu ai cerut această resetare, poți ignora mesajul.</p>
-        `,
-      }),
+      expiresIn: "7d"
     });
 
-    res.json({ message: "Email de resetare trimis (dacă adresa există)." });
-  } catch {
-    res.status(500).json({ error: "Eroare la trimiterea emailului." });
+    return res.json({
+      success: true,
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        phone: user.phone
+      }
+    });
+  } catch (e) {
+    return res.status(500).json({ message: "Eroare server." });
   }
 });
 
-/* 🟢 Resetare parolă - Salvare nouă */
-router.post("/reset-password/:token", async (req, res) => {
+/* --------------------------------------------------------
+   3️⃣  Înregistrare utilizator (telefon + nume)
+-------------------------------------------------------- */
+router.post("/register", async (req, res) => {
   try {
-    const { token } = req.params;
-    const { password } = req.body;
+    const { name, phone } = req.body;
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id);
-    if (!user)
-      return res.status(400).json({ error: "Token invalid sau expirat." });
+    const exists = await User.findOne({ phone });
+    if (exists) {
+      return res.status(400).json({ message: "Telefon deja înregistrat." });
+    }
 
-    const hashed = await bcrypt.hash(password, 10);
-    user.password = hashed;
-    await user.save();
+    const user = await User.create({
+      name,
+      phone,
+      password: "smslogin" // dummy, dar necesar pentru model
+    });
 
-    res.json({ message: "Parola a fost resetată cu succes!" });
-  } catch {
-    res.status(400).json({ error: "Token invalid sau expirat." });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "7d"
+    });
+
+    return res.json({
+      success: true,
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        phone: user.phone
+      }
+    });
+  } catch (e) {
+    return res.status(500).json({ message: "Eroare la înregistrare." });
   }
 });
 
