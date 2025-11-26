@@ -1,20 +1,14 @@
 import express from "express";
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
-import { sendSMS } from "../utils/sendSMS.js"; // tu ai deja
+import sendOtpSMS, { verifyOtpSMS } from "../utils/smsLink.js";
 import bcrypt from "bcryptjs";
 
 const router = express.Router();
 
-// memorie temporară pentru coduri
-const codes = {}; // { telefon: cod }
-
-function generateCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
 /* --------------------------------------------------------
    1️⃣  Trimite cod SMS — doar dacă userul EXISTĂ
+   Folosește sendOtpSMS din smsLink.js
 -------------------------------------------------------- */
 router.post("/send-code", async (req, res) => {
   try {
@@ -24,35 +18,47 @@ router.post("/send-code", async (req, res) => {
       return res.status(400).json({ message: "Telefonul este obligatoriu." });
     }
 
+    // verificăm dacă există utilizator cu acest telefon
     const user = await User.findOne({ phone });
 
     if (!user) {
       return res.status(404).json({
         message: "Nu ai cont. Te rugăm să te înregistrezi.",
-        mustRegister: true
+        mustRegister: true,
       });
     }
 
-    const code = generateCode();
-    codes[phone] = code;
+    // trimitem codul prin sistemul centralizat smsLink
+    const result = await sendOtpSMS(phone);
 
-    await sendSMS(phone, `Codul tău de autentificare este ${code}`);
+    if (!result.success) {
+      return res.status(400).json({
+        message: result.error || "Eroare la trimiterea codului prin SMS.",
+      });
+    }
 
     return res.json({ success: true, message: "Cod trimis prin SMS." });
   } catch (e) {
+    console.error("❌ Eroare /auth/send-code:", e);
     return res.status(500).json({ message: "Eroare server." });
   }
 });
 
 /* --------------------------------------------------------
    2️⃣  Verifică codul — loghează userul dacă EXISTĂ
+   Folosește verifyOtpSMS din smsLink.js
 -------------------------------------------------------- */
 router.post("/verify-code", async (req, res) => {
   try {
     const { phone, code } = req.body;
 
-    if (!codes[phone] || codes[phone] !== code) {
-      return res.status(400).json({ message: "Cod invalid." });
+    if (!phone || !code) {
+      return res.status(400).json({ message: "Telefon și cod obligatorii." });
+    }
+
+    const verified = await verifyOtpSMS(phone, code);
+    if (!verified.success) {
+      return res.status(400).json({ message: "Cod invalid sau expirat." });
     }
 
     let user = await User.findOne({ phone });
@@ -60,15 +66,17 @@ router.post("/verify-code", async (req, res) => {
     if (!user) {
       return res.status(404).json({
         message: "Nu ai cont, trebuie să te înregistrezi.",
-        mustRegister: true
+        mustRegister: true,
       });
     }
 
-    delete codes[phone]; // ștergere cod după folosire
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d"
-    });
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET || "secret",
+      {
+        expiresIn: "7d",
+      }
+    );
 
     return res.json({
       success: true,
@@ -76,10 +84,11 @@ router.post("/verify-code", async (req, res) => {
       user: {
         _id: user._id,
         name: user.name,
-        phone: user.phone
-      }
+        phone: user.phone,
+      },
     });
   } catch (e) {
+    console.error("❌ Eroare /auth/verify-code:", e);
     return res.status(500).json({ message: "Eroare server." });
   }
 });
@@ -91,20 +100,32 @@ router.post("/register", async (req, res) => {
   try {
     const { name, phone } = req.body;
 
+    if (!phone || !name) {
+      return res
+        .status(400)
+        .json({ message: "Numele și telefonul sunt obligatorii." });
+    }
+
     const exists = await User.findOne({ phone });
     if (exists) {
-      return res.status(400).json({ message: "Telefon deja înregistrat." });
+      return res
+        .status(400)
+        .json({ message: "Telefon deja înregistrat. Autentifică-te." });
     }
 
     const user = await User.create({
       name,
       phone,
-      password: "smslogin" // dummy, dar necesar pentru model
+      password: "smslogin", // dummy, necesar pentru model
     });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "7d"
-    });
+    const token = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET || "secret",
+      {
+        expiresIn: "7d",
+      }
+    );
 
     return res.json({
       success: true,
@@ -112,10 +133,11 @@ router.post("/register", async (req, res) => {
       user: {
         _id: user._id,
         name: user.name,
-        phone: user.phone
-      }
+        phone: user.phone,
+      },
     });
   } catch (e) {
+    console.error("❌ Eroare /auth/register:", e);
     return res.status(500).json({ message: "Eroare la înregistrare." });
   }
 });
