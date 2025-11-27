@@ -164,6 +164,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     const existingFree = await Listing.findOne({
       phone: normalizedPhone,
       isFree: true,
+    }).exec();
       $or: [
         { expiresAt: { $gte: now } }, // activ
         { expiresAt: null }, // fallback
