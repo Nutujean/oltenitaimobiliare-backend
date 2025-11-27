@@ -19,6 +19,7 @@ const ListingSchema = new Schema(
 
     // contact
     phone: { type: String, trim: true },
+    email: { type: String, trim: true }, // ✅ acum se salvează corect
 
     // status general
     status: { type: String, default: "disponibil" },
@@ -48,6 +49,7 @@ const ListingSchema = new Schema(
 
     // 🔹 câmp pentru promovare
     featuredUntil: { type: Date, default: null },
+    featured: { type: Boolean, default: false }, // ✅ folosit la Stripe/confirm
 
     // opționale moștenite
     userEmail: { type: String, trim: true },
