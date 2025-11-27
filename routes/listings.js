@@ -128,14 +128,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
       intent,
     } = req.body;
 
-    if (
-      !title ||
-      !description ||
-      !price ||
-      !category ||
-      !location ||
-      !phone
-    ) {
+    if (!title || !description || !price || !category || !location || !phone) {
       return res.status(400).json({
         error: "Te rugăm să completezi toate câmpurile obligatorii.",
       });
@@ -143,43 +136,25 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
 
     const numericPrice = Number(price);
     if (!numericPrice || numericPrice <= 0) {
-      return res
-        .status(400)
-        .json({ error: "Preț invalid. Trebuie să fie mai mare decât 0." });
+      return res.status(400).json({
+        error: "Preț invalid. Trebuie să fie mai mare decât 0.",
+      });
     }
 
-    // 🔧 normalizăm telefonul și îl folosim mai departe
+    // normalizare telefon
     const normalizedPhone = normalizePhone(phone);
 
-    const now = new Date();
-    const cooldownStart = new Date(
-      now.getTime() - FREE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000
-    );
-
-    // 🔍 căutăm un anunț GRATUIT (isFree: true) pe același număr,
-    // care este:
-    //  - încă activ (expiresAt >= acum)
-    //  - sau fără expirare
-    //  - sau expirat de mai puțin de FREE_COOLDOWN_DAYS zile
+    // 🔥 REGULA NOUĂ: un singur anunț gratuit per număr
     const existingFree = await Listing.findOne({
       phone: normalizedPhone,
       isFree: true,
-    }).exec();
-      $or: [
-        { expiresAt: { $gte: now } }, // activ
-        { expiresAt: null }, // fallback
-        { expiresAt: { $lt: now, $gte: cooldownStart } }, // expirat recent (cooldown)
-      ],
     }).exec();
 
     if (existingFree) {
       return res.status(400).json({
         error:
-          "Ai deja un anunț gratuit activ sau recent pentru acest număr de telefon. " +
-          "Poți adăuga anunțuri suplimentare doar cu promovare sau după aproximativ 15 zile de la expirarea anunțului gratuit.",
+          "Ai deja un anunț gratuit pentru acest număr de telefon. Poți adăuga doar anunțuri promovate.",
         mustPay: true,
-        message:
-          "Pentru a publica alt anunț gratuit cu acest număr de telefon, trebuie fie să promovezi un anunț existent, fie să aștepți ~15 zile de la expirarea celui gratuit.",
       });
     }
 
@@ -188,7 +163,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
       imageUrls = req.files.map((file) => file.path || file.secure_url);
     }
 
-    // 📅 setăm valabilitatea anunțului gratuit (ex: 30 zile)
+    // expirare la 30 zile
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
@@ -203,7 +178,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
       email,
       intent,
       images: imageUrls,
-      isFree: true, // 👉 anunț gratuit la început
+      isFree: true,
       featured: false,
       featuredUntil: null,
       expiresAt,
@@ -211,46 +186,12 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
 
     await listing.save();
 
-    try {
-      if (email) {
-        await sendEmail({
-          to: email,
-          subject: "Anunțul tău a fost publicat pe OltenitaImobiliare.ro",
-          html: `
-            <p>Bună,</p>
-            <p>Anunțul tău <strong>${title}</strong> a fost publicat cu succes pe <a href="https://oltenitaimobiliare.ro" target="_blank">OltenitaImobiliare.ro</a>.</p>
-            <p>Îți mulțumim că folosești platforma noastră!</p>
-          `,
-        });
-      }
-
-      await sendEmail({
-        to: process.env.ADMIN_EMAIL || "oltenitaimobiliare@gmail.com",
-        subject: "Anunț nou publicat",
-        html: `
-          <p>A fost publicat un anunț nou:</p>
-          <ul>
-            <li><strong>Titlu:</strong> ${title}</li>
-            <li><strong>Preț:</strong> ${numericPrice} €</li>
-            <li><strong>Localitate:</strong> ${location}</li>
-            <li><strong>Telefon:</strong> ${normalizedPhone}</li>
-            <li><strong>Email:</strong> ${email || "-"}</li>
-          </ul>
-        `,
-      });
-    } catch (mailErr) {
-      console.error("❌ Eroare la trimiterea email-urilor:", mailErr);
-    }
-
     res.status(201).json(listing);
   } catch (err) {
     console.error("❌ Eroare POST /api/listings:", err);
-    res
-      .status(500)
-      .json({ error: "Eroare server la adăugarea anunțului." });
+    res.status(500).json({ error: "Eroare server la adăugarea anunțului." });
   }
 });
-
 /* =======================================================
    🟧 PUT actualizare anunț
 ======================================================= */
