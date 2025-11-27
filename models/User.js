@@ -1,3 +1,4 @@
+// models/User.js
 import mongoose from "mongoose";
 
 const { Schema } = mongoose;
@@ -20,6 +21,13 @@ const UserSchema = new Schema(
       type: String,
       required: [true, "Parola este obligatorie"],
     },
+
+    // ✅ CÂMP TELEFON – lipsea!
+    phone: {
+      type: String,
+      trim: true,
+    },
+
     verified: { type: Boolean, default: false },
     verificationToken: { type: String },
     verificationTokenExpires: { type: Date },
