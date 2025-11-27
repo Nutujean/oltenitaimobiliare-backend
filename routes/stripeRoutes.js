@@ -169,7 +169,13 @@ router.get("/confirm", async (req, res) => {
 
     const updated = await Listing.findByIdAndUpdate(
       listingId,
-      { $set: { featuredUntil } },
+      {
+        $set: {
+          featuredUntil,
+          featured: true,   // ✅ devine promovat
+          isFree: false,    // ✅ nu mai este considerat anunț gratuit
+        },
+      },
       { new: true }
     ).lean();
 

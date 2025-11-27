@@ -1,3 +1,4 @@
+// src/routes/phoneAuth.js
 import express from "express";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
@@ -17,7 +18,7 @@ const otpLimiter = rateLimit({
 
 /* =======================================================
    📲 Trimite OTP (login / înregistrare)
-   - mode: "login"  → trebuie să EXISTE cont
+   - mode: "login"    → trebuie să EXISTE cont
    - mode: "register" → NU trebuie să existe cont
 ======================================================= */
 router.post("/send-otp", otpLimiter, async (req, res) => {
@@ -27,7 +28,7 @@ router.post("/send-otp", otpLimiter, async (req, res) => {
     if (!phone) {
       return res
         .status(400)
-        .json({ error: "Număr de telefon lipsă.", success: false });
+        .json({ success: false, error: "Număr de telefon lipsă." });
     }
 
     // curățăm numărul: doar cifre, fără +4, spații etc.
@@ -40,10 +41,13 @@ router.post("/send-otp", otpLimiter, async (req, res) => {
       });
     }
 
+    // mod invalid → mesaj profi, nu tehnic
     if (!mode || !["login", "register"].includes(mode)) {
       return res.status(400).json({
         success: false,
-        error: "Mod invalid. Trebuie 'login' sau 'register'.",
+        error:
+          "A apărut o problemă la autentificare. Te rugăm să reîncerci sau să creezi un cont nou.",
+        mustRegister: true,
       });
     }
 
@@ -51,10 +55,7 @@ router.post("/send-otp", otpLimiter, async (req, res) => {
 
     // căutăm user după telefon sau email-ul generat automat
     const existingUser = await User.findOne({
-      $or: [
-        { phone: cleanPhone },
-        { email: `${cleanPhone}@smslogin.local` },
-      ],
+      $or: [{ phone: cleanPhone }, { email: `${cleanPhone}@smslogin.local` }],
     });
 
     // 🔐 La LOGIN → trebuie să existe cont
@@ -62,7 +63,8 @@ router.post("/send-otp", otpLimiter, async (req, res) => {
       return res.status(400).json({
         success: false,
         error:
-          "Nu există niciun cont cu acest număr. Te rugăm să te înregistrezi mai întâi.",
+          "Acest număr nu este înregistrat. Creează un cont nou pentru a continua.",
+        mustRegister: true,
       });
     }
 
@@ -71,7 +73,8 @@ router.post("/send-otp", otpLimiter, async (req, res) => {
       return res.status(400).json({
         success: false,
         error:
-          "Există deja un cont cu acest număr. Încearcă să te autentifici.",
+          "Există deja un cont creat cu acest număr de telefon. Te rugăm să mergi la pagina de autentificare.",
+        mustLogin: true,
       });
     }
 
@@ -86,40 +89,40 @@ router.post("/send-otp", otpLimiter, async (req, res) => {
     res.json({ success: true, message: "Codul a fost trimis prin SMS." });
   } catch (err) {
     console.error("❌ Eroare send-otp:", err);
-    res
-      .status(500)
-      .json({ success: false, error: "Eroare server la trimiterea SMS-ului." });
+    res.status(500).json({
+      success: false,
+      error: "Eroare server la trimiterea SMS-ului.",
+    });
   }
 });
 
 /* =======================================================
    🔐 Verificare OTP + creare / autentificare user
-   (logica rămâne la fel: dacă nu există user, îl creăm)
 ======================================================= */
 router.post("/verify-otp", async (req, res) => {
   try {
     const { phone, code } = req.body;
+
     if (!phone || !code) {
-      return res
-        .status(400)
-        .json({ error: "Telefon sau cod lipsă.", success: false });
+      return res.status(400).json({
+        success: false,
+        error: "Telefon sau cod lipsă.",
+      });
     }
 
     const cleanPhone = phone.replace(/[^\d]/g, "").replace(/^4/, "");
 
     const verified = await verifyOtpSMS(cleanPhone, code);
     if (!verified.success) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Cod incorect sau expirat." });
+      return res.status(400).json({
+        success: false,
+        error: "Cod incorect sau expirat.",
+      });
     }
 
     // 🧠 Căutăm dacă există deja utilizatorul
     let user = await User.findOne({
-      $or: [
-        { phone: cleanPhone },
-        { email: `${cleanPhone}@smslogin.local` },
-      ],
+      $or: [{ phone: cleanPhone }, { email: `${cleanPhone}@smslogin.local` }],
     });
 
     // Dacă nu există, îl creăm (valabil pentru fluxul de înregistrare)
@@ -150,9 +153,10 @@ router.post("/verify-otp", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Eroare verify-otp:", err);
-    res
-      .status(500)
-      .json({ success: false, error: "Eroare server la verificarea OTP." });
+    res.status(500).json({
+      success: false,
+      error: "Eroare server la verificarea OTP.",
+    });
   }
 });
 

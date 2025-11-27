@@ -8,6 +8,15 @@ import { sendEmail } from "../utils/sendEmail.js";
 
 const router = express.Router();
 
+// 🔧 helper normalizare telefon (doar cifre, scoatem 4 din față dacă e 407..)
+const normalizePhone = (value = "") => {
+  const digits = String(value).replace(/\D/g, "");
+  return digits.replace(/^4/, ""); // 4072... -> 072...
+};
+
+// câte zile după expirarea anunțului gratuit NU mai permitem alt gratuit pe același număr
+const FREE_COOLDOWN_DAYS = 15;
+
 /* =======================================================
    🟩 GET toate anunțurile (public)
 ======================================================= */
@@ -102,7 +111,9 @@ router.get("/:id", async (req, res) => {
 /* =======================================================
    🟧 POST creare anunț nou (autentificat)
    - primește FormData cu "images"
-   - limitează un singur anunț gratuit activ / user
+   - limitează anunțurile GRATUITE pe același număr de telefon:
+     ✅ maxim 1 nepromovat
+     ✅ după expirare, alt gratuit doar după ~15 zile
 ======================================================= */
 router.post("/", protect, upload.array("images", 10), async (req, res) => {
   try {
@@ -137,20 +148,37 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
         .json({ error: "Preț invalid. Trebuie să fie mai mare decât 0." });
     }
 
+    // 🔧 normalizăm telefonul și îl folosim mai departe
+    const normalizedPhone = normalizePhone(phone);
+
     const now = new Date();
+    const cooldownStart = new Date(
+      now.getTime() - FREE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000
+    );
+
+    // 🔍 căutăm un anunț GRATUIT (isFree: true) pe același număr,
+    // care este:
+    //  - încă activ (expiresAt >= acum)
+    //  - sau fără expirare
+    //  - sau expirat de mai puțin de FREE_COOLDOWN_DAYS zile
     const existingFree = await Listing.findOne({
-      user: req.user._id,
+      phone: normalizedPhone,
       isFree: true,
-      $or: [{ expiresAt: { $gte: now } }, { expiresAt: null }],
+      $or: [
+        { expiresAt: { $gte: now } }, // activ
+        { expiresAt: null }, // fallback
+        { expiresAt: { $lt: now, $gte: cooldownStart } }, // expirat recent (cooldown)
+      ],
     }).exec();
 
     if (existingFree) {
       return res.status(400).json({
         error:
-          "Ai deja un anunț gratuit activ. Pentru a publica încă un anunț, acesta trebuie să fie promovat (plătit).",
+          "Ai deja un anunț gratuit activ sau recent pentru acest număr de telefon. " +
+          "Poți adăuga anunțuri suplimentare doar cu promovare sau după aproximativ 15 zile de la expirarea anunțului gratuit.",
         mustPay: true,
         message:
-          "Ai deja un anunț gratuit activ. Pentru a publica încă un anunț, te rugăm să alegi opțiunea de promovare.",
+          "Pentru a publica alt anunț gratuit cu acest număr de telefon, trebuie fie să promovezi un anunț existent, fie să aștepți ~15 zile de la expirarea celui gratuit.",
       });
     }
 
@@ -159,6 +187,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
       imageUrls = req.files.map((file) => file.path || file.secure_url);
     }
 
+    // 📅 setăm valabilitatea anunțului gratuit (ex: 30 zile)
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
@@ -169,11 +198,11 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
       price: numericPrice,
       category,
       location,
-      phone,
+      phone: normalizedPhone,
       email,
       intent,
       images: imageUrls,
-      isFree: true,
+      isFree: true, // 👉 anunț gratuit la început
       featured: false,
       featuredUntil: null,
       expiresAt,
@@ -203,7 +232,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
             <li><strong>Titlu:</strong> ${title}</li>
             <li><strong>Preț:</strong> ${numericPrice} €</li>
             <li><strong>Localitate:</strong> ${location}</li>
-            <li><strong>Telefon:</strong> ${phone}</li>
+            <li><strong>Telefon:</strong> ${normalizedPhone}</li>
             <li><strong>Email:</strong> ${email || "-"}</li>
           </ul>
         `,
@@ -259,7 +288,7 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
     if (price !== undefined) listing.price = Number(price);
     if (category !== undefined) listing.category = category;
     if (location !== undefined) listing.location = location;
-    if (phone !== undefined) listing.phone = phone;
+    if (phone !== undefined) listing.phone = normalizePhone(phone);
     if (email !== undefined) listing.email = email;
     if (intent !== undefined) listing.intent = intent;
 
