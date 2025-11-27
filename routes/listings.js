@@ -144,11 +144,14 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     // normalizare telefon
     const normalizedPhone = normalizePhone(phone);
 
-    // 🔥 REGULA NOUĂ: un singur anunț gratuit per număr
-    const existingFree = await Listing.findOne({
-      phone: normalizedPhone,
-      isFree: true,
-    }).exec();
+    // 🔥 REGULA: un singur anunț gratuit / număr (inclusiv cele vechi fără isFree)
+const existingFree = await Listing.findOne({
+  phone: normalizedPhone,
+  $or: [
+    { isFree: true },            // anunțurile noi marcate corect
+    { isFree: { $exists: false } } // anunțurile vechi, fără câmp isFree
+  ],
+}).exec();
 
     if (existingFree) {
       return res.status(400).json({
