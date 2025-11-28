@@ -96,25 +96,29 @@ router.get("/:id", async (req, res) => {
       return res.status(400).json({ error: "ID invalid." });
     }
 
-    const listing = await Listing.findById(id).lean().exec();
-    if (!listing) {
-      return res.status(404).json({ error: "Anunțul nu a fost găsit." });
-    }
-    // 👉 dacă anunțul nu are user (anunț vechi), permitem editarea
-    if (!listing.user) {
-      console.warn("ℹ️ Listing vechi fără user – permit update temporar.");
-    } else if (listing.user.toString() !== req.user._id.toString()) {
-      return res
-        .status(403)
-        .json({ error: "Nu ai dreptul să modifici acest anunț." });
-    }
-    res.json(listing);
+    const listing = await Listing.findById(id).exec();
+if (!listing) {
+  return res.status(404).json({ error: "Anunțul nu a fost găsit." });
+}
+
+// 👉 dacă anunțul nu are user (anunț vechi), permitem editarea
+if (!listing.user) {
+  console.warn("ℹ️ Listing vechi fără user – permit update temporar.");
+} else if (listing.user.toString() !== req.user._id.toString()) {
+  return res
+    .status(403)
+    .json({ error: "Nu ai dreptul să modifici acest anunț." });
+}
+
+    // 🔹 AICI NU FOLOSIM req.user DELOC
+    return res.json(listing);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings/:id:", err);
-    res.status(500).json({ error: "Eroare server la încărcarea anunțului." });
+    return res
+      .status(500)
+      .json({ error: "Eroare server la încărcarea anunțului." });
   }
 });
-
 /* =======================================================
    🟧 POST creare anunț nou (autentificat)
    - primește FormData cu "images"
