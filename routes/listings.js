@@ -1,4 +1,4 @@
-// backend/src/routes/listings.js
+// backend/routes/listings.js
 import express from "express";
 import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
@@ -87,6 +87,7 @@ router.get("/mine", protect, async (req, res) => {
 
 /* =======================================================
    🟦 GET un singur anunț după ID (public)
+   ⚠️ NU folosim deloc req.user aici
 ======================================================= */
 router.get("/:id", async (req, res) => {
   try {
@@ -96,21 +97,11 @@ router.get("/:id", async (req, res) => {
       return res.status(400).json({ error: "ID invalid." });
     }
 
-    const listing = await Listing.findById(id).exec();
-if (!listing) {
-  return res.status(404).json({ error: "Anunțul nu a fost găsit." });
-}
+    const listing = await Listing.findById(id).lean().exec();
+    if (!listing) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit." });
+    }
 
-// 👉 dacă anunțul nu are user (anunț vechi), permitem editarea
-if (!listing.user) {
-  console.warn("ℹ️ Listing vechi fără user – permit update temporar.");
-} else if (listing.user.toString() !== req.user._id.toString()) {
-  return res
-    .status(403)
-    .json({ error: "Nu ai dreptul să modifici acest anunț." });
-}
-
-    // 🔹 AICI NU FOLOSIM req.user DELOC
     return res.json(listing);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings/:id:", err);
@@ -119,12 +110,11 @@ if (!listing.user) {
       .json({ error: "Eroare server la încărcarea anunțului." });
   }
 });
+
 /* =======================================================
    🟧 POST creare anunț nou (autentificat)
    - primește FormData cu "images"
-   - limitează anunțurile GRATUITE pe același număr de telefon:
-     ✅ maxim 1 nepromovat
-     ✅ după expirare, alt gratuit doar după ~15 zile
+   - REGULA: UN SINGUR ANUNȚ GRATUIT / NUMĂR
 ======================================================= */
 router.post("/", protect, upload.array("images", 10), async (req, res) => {
   try {
@@ -155,14 +145,25 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     // normalizare telefon
     const normalizedPhone = normalizePhone(phone);
 
-    // 🔥 REGULA: un singur anunț gratuit / număr (inclusiv cele vechi fără isFree)
-const existingFree = await Listing.findOne({
-  phone: normalizedPhone,
-  $or: [
-    { isFree: true },            // anunțurile noi marcate corect
-    { isFree: { $exists: false } } // anunțurile vechi, fără câmp isFree
-  ],
-}).exec();
+    // LOG pt debug – vezi în Render logs
+    console.log("📞 [POST /api/listings] phone=", phone, "normalized=", normalizedPhone);
+
+    // 🔥 REGULA: un singur anunț gratuit / număr
+    // (inclusiv anunțurile vechi care nu au isFree)
+    const existingFree = await Listing.findOne({
+      phone: normalizedPhone,
+      $or: [
+        { isFree: true },              // anunțurile noi marcate corect
+        { isFree: { $exists: false } } // anunțurile vechi fără câmp isFree
+      ],
+    }).exec();
+
+    console.log(
+      "🔎 existingFree pentru",
+      normalizedPhone,
+      "=>",
+      existingFree ? existingFree._id.toString() : "NU"
+    );
 
     if (existingFree) {
       return res.status(400).json({
@@ -200,15 +201,45 @@ const existingFree = await Listing.findOne({
 
     await listing.save();
 
+    // (opțional) trimis email – păstrăm cum era la tine
+    try {
+      if (email) {
+        await sendEmail({
+          to: email,
+          subject: "Anunțul tău a fost publicat pe OltenitaImobiliare.ro",
+          html: `
+            <p>Bună,</p>
+            <p>Anunțul tău <strong>${title}</strong> a fost publicat cu succes pe <a href="https://oltenitaimobiliare.ro" target="_blank">OltenitaImobiliare.ro</a>.</p>
+            <p>Îți mulțumim că folosești platforma noastră!</p>
+          `,
+        });
+      }
+
+      await sendEmail({
+        to: process.env.ADMIN_EMAIL || "oltenitaimobiliare@gmail.com",
+        subject: "Anunț nou publicat",
+        html: `
+          <p>A fost publicat un anunț nou:</p>
+          <ul>
+            <li><strong>Titlu:</strong> ${title}</li>
+            <li><strong>Preț:</strong> ${numericPrice} €</li>
+            <li><strong>Localitate:</strong> ${location}</li>
+            <li><strong>Telefon:</strong> ${normalizedPhone}</li>
+            <li><strong>Email:</strong> ${email || "-"}</li>
+          </ul>
+        `,
+      });
+    } catch (mailErr) {
+      console.error("❌ Eroare la trimiterea email-urilor:", mailErr);
+    }
+
     res.status(201).json(listing);
   } catch (err) {
     console.error("❌ Eroare POST /api/listings:", err);
     res.status(500).json({ error: "Eroare server la adăugarea anunțului." });
   }
 });
-/* =======================================================
-   🟧 PUT actualizare anunț
-======================================================= */
+
 /* =======================================================
    🟧 PUT actualizare anunț
 ======================================================= */
@@ -225,9 +256,9 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
 
-    // ✅ protecție dacă nu avem req.user sau listing.user
-    if (!req.user || !req.user._id) {
-      return res.status(401).json({ error: "Utilizator neautorizat." });
+    // extra protecție: dacă, din orice motiv, req.user nu există, nu crăpăm
+    if (!req.user) {
+      return res.status(401).json({ error: "Neautorizat." });
     }
 
     if (listing.user && listing.user.toString() !== req.user._id.toString()) {
@@ -273,9 +304,6 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
 /* =======================================================
    🟥 DELETE ștergere anunț
 ======================================================= */
-/* =======================================================
-   🟥 DELETE ștergere anunț
-======================================================= */
 router.delete("/:id", protect, async (req, res) => {
   try {
     const { id } = req.params;
@@ -289,9 +317,8 @@ router.delete("/:id", protect, async (req, res) => {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
 
-    // ✅ protecție dacă nu avem req.user sau listing.user
-    if (!req.user || !req.user._id) {
-      return res.status(401).json({ error: "Utilizator neautorizat." });
+    if (!req.user) {
+      return res.status(401).json({ error: "Neautorizat." });
     }
 
     if (listing.user && listing.user.toString() !== req.user._id.toString()) {
