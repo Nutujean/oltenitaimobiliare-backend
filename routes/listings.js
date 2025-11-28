@@ -211,10 +211,10 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
 
-    if (listing.user.toString() !== req.user._id.toString()) {
-      return res
-        .status(403)
-        .json({ error: "Nu ai dreptul să modifici acest anunț." });
+    if (listing.user && listing.user.toString() !== req.user._id.toString()) {
+  return res
+    .status(403)
+    .json({ error: "Nu ai dreptul să modifici acest anunț." });
     }
 
     const {
@@ -267,10 +267,10 @@ router.delete("/:id", protect, async (req, res) => {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
 
-    if (listing.user.toString() !== req.user._id.toString()) {
-      return res
-        .status(403)
-        .json({ error: "Nu ai dreptul să ștergi acest anunț." });
+    if (listing.user && listing.user.toString() !== req.user._id.toString()) {
+  return res
+    .status(403)
+    .json({ error: "Nu ai dreptul să ștergi acest anunț." });
     }
 
     await listing.deleteOne();
