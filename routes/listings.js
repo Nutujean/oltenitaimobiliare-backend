@@ -209,6 +209,9 @@ const existingFree = await Listing.findOne({
 /* =======================================================
    🟧 PUT actualizare anunț
 ======================================================= */
+/* =======================================================
+   🟧 PUT actualizare anunț
+======================================================= */
 router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
   try {
     const { id } = req.params;
@@ -222,10 +225,15 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
 
+    // ✅ protecție dacă nu avem req.user sau listing.user
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ error: "Utilizator neautorizat." });
+    }
+
     if (listing.user && listing.user.toString() !== req.user._id.toString()) {
-  return res
-    .status(403)
-    .json({ error: "Nu ai dreptul să modifici acest anunț." });
+      return res
+        .status(403)
+        .json({ error: "Nu ai dreptul să modifici acest anunț." });
     }
 
     const {
@@ -265,6 +273,9 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
 /* =======================================================
    🟥 DELETE ștergere anunț
 ======================================================= */
+/* =======================================================
+   🟥 DELETE ștergere anunț
+======================================================= */
 router.delete("/:id", protect, async (req, res) => {
   try {
     const { id } = req.params;
@@ -278,10 +289,15 @@ router.delete("/:id", protect, async (req, res) => {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
 
+    // ✅ protecție dacă nu avem req.user sau listing.user
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ error: "Utilizator neautorizat." });
+    }
+
     if (listing.user && listing.user.toString() !== req.user._id.toString()) {
-  return res
-    .status(403)
-    .json({ error: "Nu ai dreptul să ștergi acest anunț." });
+      return res
+        .status(403)
+        .json({ error: "Nu ai dreptul să ștergi acest anunț." });
     }
 
     await listing.deleteOne();
