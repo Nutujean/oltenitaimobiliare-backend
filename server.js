@@ -17,7 +17,7 @@ import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
-import shareRoutes from "./routes/shareRoute.js";      // 👈 SHARE
+import shareRoutes from "./routes/shareRoute.js"; // 👈 SHARE
 import sitemapRoute from "./routes/sitemapRoutes.js";
 import anunturileMeleRoute from "./routes/anunturileMele.js";
 
@@ -37,6 +37,50 @@ app.use(
 );
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+/* =======================================================
+   🛡️ Blocare rute tip WordPress / hackbots / .env / git
+   (fără log, doar 404)
+======================================================= */
+const blockedPaths = [
+  "/xmlrpc.php",
+  "/wp",
+  "/wp/",
+  "/wp-login.php",
+  "/wp-admin",
+  "/wp-admin/",
+  "/wordpress",
+  "/wordpress/",
+  "/blog",
+  "/blog/",
+  "/blog/robots.txt",
+  "/wp-config.php",
+  "/.env",
+  "/backend/.env",
+  "/admin/.env",
+  "/core/.env",
+  "/.env.bak",
+  "/.gitlab-ci.yml",
+  "/config.json",
+  "/config.js",
+  "/aws-config.js",
+  "/aws.config.js",
+];
+
+app.use((req, res, next) => {
+  const path = (req.path || "").toLowerCase();
+
+  // blocăm direct fără log
+  if (
+    blockedPaths.includes(path) ||
+    path.startsWith("/wp-") ||
+    path.includes("/.git")
+  ) {
+    return res.status(404).send("Not found");
+  }
+
+  next();
+});
 
 /* =======================================================
    🔍 HEALTH & PING — o singură dată
@@ -86,10 +130,9 @@ app.get("/robots.txt", (req, res) => {
 console.log("🟢 Încep montarea rutelor Express...");
 
 // 🏡 RUTE SHARE — foarte important să fie devreme
-app.use("/", shareRoutes); // 👈 Aici vine /share/:id și /fb/:id
+app.use("/", shareRoutes); // 👈 /share/:id și /fb/:id
 
 // Rute API
-
 app.use("/api/phone", phoneAuthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
@@ -113,6 +156,7 @@ console.log("✔ Toate rutele Express au fost montate corect.");
 
 /* =======================================================
    🚫 Fallback 404 — ULTIMUL
+   (continuăm să logăm DOAR rutele necunoscute „normale”)
 ======================================================= */
 app.use((req, res) => {
   console.warn("⚠️ Ruta necunoscută:", req.originalUrl);
