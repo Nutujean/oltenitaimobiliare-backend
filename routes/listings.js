@@ -147,13 +147,13 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     const normalizedPhone = normalizePhone(phone);
 
     // 🔥 REGULA: un singur anunț gratuit / număr (inclusiv cele vechi fără isFree)
-const existingFree = await Listing.findOne({
-  phone: normalizedPhone,
-  $or: [
-    { isFree: true },            // anunțurile noi marcate corect
-    { isFree: { $exists: false } } // anunțurile vechi, fără câmp isFree
-  ],
-}).exec();
+    const existingFree = await Listing.findOne({
+      phone: normalizedPhone,
+      $or: [
+        { isFree: true }, // anunțurile noi marcate corect
+        { isFree: { $exists: false } }, // anunțurile vechi, fără câmp isFree
+      ],
+    }).exec();
 
     if (existingFree) {
       return res.status(400).json({
@@ -191,6 +191,49 @@ const existingFree = await Listing.findOne({
 
     await listing.save();
 
+    // ✅ EMAILURI (NU schimbăm nimic în logica anunțului; doar trimitem notificări)
+    try {
+      // către user (dacă există email)
+      if (email) {
+        await sendEmail({
+          to: email,
+          subject: "Anunț publicat pe OltenitaImobiliare.ro",
+          html: `
+            <div style="font-family:Arial,sans-serif;line-height:1.6">
+              <h2>Anunț publicat cu succes ✅</h2>
+              <p>Anunțul tău a fost publicat pe <b>OltenitaImobiliare.ro</b>.</p>
+              <p><b>Titlu:</b> ${title}</p>
+              <p><b>Localitate:</b> ${location}</p>
+              <p><b>Telefon:</b> ${normalizedPhone}</p>
+              <p>Sărbători cu bine! 🎄</p>
+            </div>
+          `,
+        });
+      }
+
+      // către admin (mereu)
+      await sendEmail({
+        to: "oltenitaimobiliare@gmail.com",
+        subject: "📩 Anunț nou publicat pe OltenitaImobiliare.ro",
+        html: `
+          <div style="font-family:Arial,sans-serif;line-height:1.6">
+            <h2>Anunț nou ✅</h2>
+            <p><b>Titlu:</b> ${title}</p>
+            <p><b>Preț:</b> ${numericPrice}</p>
+            <p><b>Categorie:</b> ${category}</p>
+            <p><b>Localitate:</b> ${location}</p>
+            <p><b>Telefon:</b> ${normalizedPhone}</p>
+            <p><b>Email utilizator:</b> ${email || "-"}</p>
+            <p><b>ID anunț:</b> ${listing._id}</p>
+          </div>
+        `,
+      });
+
+      console.log("✅ Emailuri trimise (user/admin) pentru anunț:", listing._id);
+    } catch (e) {
+      console.error("❌ Eroare trimitere email la publicare:", e?.message || e);
+    }
+
     res.status(201).json(listing);
   } catch (err) {
     console.error("❌ Eroare POST /api/listings:", err);
@@ -214,9 +257,9 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
     }
 
     if (listing.user && listing.user.toString() !== req.user._id.toString()) {
-  return res
-    .status(403)
-    .json({ error: "Nu ai dreptul să modifici acest anunț." });
+      return res
+        .status(403)
+        .json({ error: "Nu ai dreptul să modifici acest anunț." });
     }
 
     const {
@@ -270,9 +313,9 @@ router.delete("/:id", protect, async (req, res) => {
     }
 
     if (listing.user && listing.user.toString() !== req.user._id.toString()) {
-  return res
-    .status(403)
-    .json({ error: "Nu ai dreptul să ștergi acest anunț." });
+      return res
+        .status(403)
+        .json({ error: "Nu ai dreptul să ștergi acest anunț." });
     }
 
     await listing.deleteOne();
