@@ -16,42 +16,37 @@ const normalizePhone = (value = "") => {
 
 /* =======================================================
    🟩 GET toate anunțurile (public)
-   - promovatele ACTIVE primele
-   - anunțuri vizibile max 15 zile
-   - suportă filtre: sort, category, location, intent, q
+   - promovatele primele
+   - activele înaintea celor expirate
+   - expiratele rămân jos
 ======================================================= */
 router.get("/", async (req, res) => {
   try {
-    const now = new Date();
-
     const sortParam = req.query.sort || "newest";
     const category = (req.query.category || "").trim();
     const location = (req.query.location || "").trim();
     const intent = (req.query.intent || "").trim();
     const q = (req.query.q || "").trim();
 
-    // ✅ SORTARE: promovate active primele, apoi restul
-    let sortQuery = { featuredUntil: -1, createdAt: -1 };
+    // 🔥 sortare: ACTIVE + PROMOVATE primele
+    let sortQuery = {
+      status: 1,          // disponibil < expirat
+      featured: -1,
+      featuredUntil: -1,
+      createdAt: -1,
+    };
 
-    if (sortParam === "cheapest")
-      sortQuery = { featuredUntil: -1, price: 1, createdAt: -1 };
+    if (sortParam === "cheapest") {
+      sortQuery = { status: 1, featured: -1, price: 1, createdAt: -1 };
+    }
+    if (sortParam === "expensive") {
+      sortQuery = { status: 1, featured: -1, price: -1, createdAt: -1 };
+    }
+    if (sortParam === "oldest") {
+      sortQuery = { status: 1, featured: -1, createdAt: 1 };
+    }
 
-    if (sortParam === "expensive")
-      sortQuery = { featuredUntil: -1, price: -1, createdAt: -1 };
-
-    if (sortParam === "oldest")
-      sortQuery = { featuredUntil: -1, createdAt: 1 };
-
-    // ✅ FILTRU DE BAZĂ: doar anunțuri valide (max 15 zile)
-    const and = [
-      {
-        $or: [
-          { featuredUntil: { $gte: now } }, // promovate active
-          { expiresAt: { $gte: now } },     // anunțuri normale neexpirate
-        ],
-      },
-    ];
-
+    const and = [];
     if (category) and.push({ category });
     if (location) and.push({ location });
     if (intent) and.push({ intent });
@@ -66,7 +61,7 @@ router.get("/", async (req, res) => {
       });
     }
 
-    const filter = { $and: and };
+    const filter = and.length ? { $and: and } : {};
 
     const listings = await Listing.find(filter)
       .sort(sortQuery)
@@ -76,7 +71,7 @@ router.get("/", async (req, res) => {
     res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings:", err);
-    res.status(500).json({ error: "Eroare server la încărcarea anunțurilor." });
+    res.status(500).json({ error: "Eroare server." });
   }
 });
 
