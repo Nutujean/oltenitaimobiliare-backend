@@ -124,25 +124,50 @@ app.use((req, res) => {
 });
 
 /* =======================================================
-   🕒 CRON EXPIRARE ANUNȚURI
+   🕒 CRON — EXPIRĂ după 15 zile, ȘTERGE după 30 zile
+   Rulează zilnic la 02:00
 ======================================================= */
 cron.schedule("0 2 * * *", async () => {
   try {
     const now = new Date();
-    const expiredFree = await Listing.updateMany(
-      { isFree: true, expiresAt: { $lt: now }, status: { $ne: "expirat" } },
+
+    // 1) Marchează ca expirat: anunțuri gratuite care au trecut de expiresAt
+    const expired = await Listing.updateMany(
+      {
+        isFree: true,
+        expiresAt: { $lt: now },
+        status: { $ne: "expirat" },
+      },
       { $set: { status: "expirat" } }
     );
-    const expiredFeatured = await Listing.updateMany(
-      { featuredUntil: { $lt: now }, status: { $ne: "expirat" } },
-      { $set: { status: "expirat" } }
+
+    // 2) Dezactivează promovarea dacă a expirat featuredUntil
+    const unfeature = await Listing.updateMany(
+      {
+        featuredUntil: { $lt: now },
+        featured: true,
+      },
+      { $set: { featured: false, featuredUntil: null } }
     );
-    if (expiredFree.modifiedCount > 0 || expiredFeatured.modifiedCount > 0)
+
+    // 3) Șterge definitiv după 30 zile de la createdAt
+    const THIRTY_DAYS_AGO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const deleted = await Listing.deleteMany({
+      createdAt: { $lt: THIRTY_DAYS_AGO },
+    });
+
+    if (
+      (expired?.modifiedCount || 0) > 0 ||
+      (unfeature?.modifiedCount || 0) > 0 ||
+      (deleted?.deletedCount || 0) > 0
+    ) {
       console.log(
-        `🕒 [CRON] Dezactivate: ${
-          expiredFree.modifiedCount + expiredFeatured.modifiedCount
-        } anunțuri expirate.`
+        `🕒 [CRON] Expirate: ${expired?.modifiedCount || 0} | Unfeatured: ${
+          unfeature?.modifiedCount || 0
+        } | Șterse: ${deleted?.deletedCount || 0}`
       );
+    }
   } catch (err) {
     console.error("❌ Eroare CRON:", err);
   }

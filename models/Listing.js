@@ -22,7 +22,11 @@ const ListingSchema = new Schema(
     email: { type: String, trim: true }, // ✅ acum se salvează corect
 
     // status general
-    status: { type: String, default: "disponibil" },
+    status: {
+  type: String,
+  enum: ["disponibil", "expirat"],
+  default: "disponibil",
+},
     rezervat: { type: Boolean, default: false },
 
     // relație user
@@ -58,7 +62,7 @@ const ListingSchema = new Schema(
     isFree: { type: Boolean, default: true },
     expiresAt: {
       type: Date,
-      default: () => new Date(Date.now() + 10 * 24 * 60 * 60 * 1000), // 10 zile
+      default: () => new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 zile
     },
   },
   { timestamps: true }
