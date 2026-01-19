@@ -49,7 +49,6 @@ router.get("/share/:id", async (req, res) => {
 </head>
 <body>
   <script>
-    // dacă nu găsim anunțul, ducem utilizatorul pe homepage
     window.location.href = "https://oltenitaimobiliare.ro/";
   </script>
 </body>
@@ -72,9 +71,9 @@ router.get("/share/:id", async (req, res) => {
       "Vezi detalii despre acest anunț imobiliar din Oltenița."
     ).replace(/"/g, "&quot;");
 
-const publicUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
+    const publicUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id}`;
 
-const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html lang="ro">
 <head>
   <meta charset="utf-8">
@@ -104,7 +103,6 @@ const html = `<!DOCTYPE html>
   </script>
 </body>
 </html>`;
-
 
     return res.status(200).send(html);
   } catch (err) {
@@ -138,18 +136,6 @@ const html = `<!DOCTYPE html>
 </html>`;
     return res.status(200).send(html);
   }
-});
-
-/* ============================================================
-   🔵 REDIRECT DIRECT CĂTRE FACEBOOK
-   ============================================================ */
-router.get("/fb/:id", (req, res) => {
-  const { id } = req.params;
-  const shareUrl = `https://share.oltenitaimobiliare.ro/share/${id}`;
-  const redirectUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-    shareUrl
-  )}`;
-  res.redirect(redirectUrl);
 });
 
 export default router;

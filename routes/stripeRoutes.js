@@ -19,9 +19,9 @@ const stripe = STRIPE_SECRET_KEY
 
 // 🔹 Planuri de promovare
 const PLANS = {
-  featured7: { label: "Promovare anunț – 7 zile", amountRON: 50 },
-  featured14: { label: "Promovare anunț – 14 zile", amountRON: 85 },
-  featured30: { label: "Promovare anunț – 30 zile", amountRON: 125 },
+  featured7: { label: "Promovare anunț – 7 zile", amountRON: 30 },
+  featured14: { label: "Promovare anunț – 14 zile", amountRON: 50 },
+  featured30: { label: "Promovare anunț – 30 zile", amountRON: 80 },
 };
 
 // 🔹 Helper pentru extragerea ID-ului din slug
