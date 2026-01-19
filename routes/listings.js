@@ -16,26 +16,41 @@ const normalizePhone = (value = "") => {
 
 /* =======================================================
    🟩 GET toate anunțurile (public)
-   - promovatele primele
-   - NU mai golim lista când expiră (nu mai excludem din query)
+   - promovatele ACTIVE primele
+   - anunțuri vizibile max 15 zile
    - suportă filtre: sort, category, location, intent, q
 ======================================================= */
 router.get("/", async (req, res) => {
   try {
+    const now = new Date();
+
     const sortParam = req.query.sort || "newest";
     const category = (req.query.category || "").trim();
     const location = (req.query.location || "").trim();
     const intent = (req.query.intent || "").trim();
     const q = (req.query.q || "").trim();
 
-    // ✅ sortare: promoted first (featured + featuredUntil), apoi createdAt
-    let sortQuery = { featured: -1, featuredUntil: -1, createdAt: -1 };
-    if (sortParam === "cheapest") sortQuery = { featured: -1, featuredUntil: -1, price: 1, createdAt: -1 };
-    if (sortParam === "expensive") sortQuery = { featured: -1, featuredUntil: -1, price: -1, createdAt: -1 };
-    if (sortParam === "oldest") sortQuery = { featured: -1, featuredUntil: -1, createdAt: 1 };
+    // ✅ SORTARE: promovate active primele, apoi restul
+    let sortQuery = { featuredUntil: -1, createdAt: -1 };
 
-    // ✅ Construim filtre fără să excludem expiratele
-    const and = [];
+    if (sortParam === "cheapest")
+      sortQuery = { featuredUntil: -1, price: 1, createdAt: -1 };
+
+    if (sortParam === "expensive")
+      sortQuery = { featuredUntil: -1, price: -1, createdAt: -1 };
+
+    if (sortParam === "oldest")
+      sortQuery = { featuredUntil: -1, createdAt: 1 };
+
+    // ✅ FILTRU DE BAZĂ: doar anunțuri valide (max 15 zile)
+    const and = [
+      {
+        $or: [
+          { featuredUntil: { $gte: now } }, // promovate active
+          { expiresAt: { $gte: now } },     // anunțuri normale neexpirate
+        ],
+      },
+    ];
 
     if (category) and.push({ category });
     if (location) and.push({ location });
@@ -51,9 +66,13 @@ router.get("/", async (req, res) => {
       });
     }
 
-    const filter = and.length ? { $and: and } : {};
+    const filter = { $and: and };
 
-    const listings = await Listing.find(filter).sort(sortQuery).lean().exec();
+    const listings = await Listing.find(filter)
+      .sort(sortQuery)
+      .lean()
+      .exec();
+
     res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings:", err);

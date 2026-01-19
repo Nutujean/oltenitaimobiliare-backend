@@ -124,52 +124,48 @@ app.use((req, res) => {
 });
 
 /* =======================================================
-   🕒 CRON — EXPIRĂ după 15 zile, ȘTERGE după 30 zile
-   Rulează zilnic la 02:00
+   🕒 CRON — EXPIRARE & ȘTERGERE ANUNȚURI
+   - expiră după 15 zile
+   - șterge după 30 zile
+   - promovatele active NU sunt afectate
 ======================================================= */
-cron.schedule("0 2 * * *", async () => {
+cron.schedule("0 3 * * *", async () => {
   try {
     const now = new Date();
 
-    // 1) Marchează ca expirat: anunțuri gratuite care au trecut de expiresAt
+    // 🔸 1. EXPIRĂ DUPĂ 15 ZILE (doar dacă NU e promovat activ)
     const expired = await Listing.updateMany(
       {
-        isFree: true,
+        status: "disponibil",
         expiresAt: { $lt: now },
-        status: { $ne: "expirat" },
+        $or: [
+          { featuredUntil: null },
+          { featuredUntil: { $lt: now } },
+        ],
       },
       { $set: { status: "expirat" } }
     );
 
-    // 2) Dezactivează promovarea dacă a expirat featuredUntil
-    const unfeature = await Listing.updateMany(
-      {
-        featuredUntil: { $lt: now },
-        featured: true,
-      },
-      { $set: { featured: false, featuredUntil: null } }
+    // 🔸 2. ȘTERGE DUPĂ 30 ZILE (doar dacă NU e promovat activ)
+    const DELETE_BEFORE = new Date(
+      Date.now() - 30 * 24 * 60 * 60 * 1000
     );
 
-    // 3) Șterge definitiv după 30 zile de la createdAt
-    const THIRTY_DAYS_AGO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
     const deleted = await Listing.deleteMany({
-      createdAt: { $lt: THIRTY_DAYS_AGO },
+      createdAt: { $lt: DELETE_BEFORE },
+      $or: [
+        { featuredUntil: null },
+        { featuredUntil: { $lt: now } },
+      ],
     });
 
-    if (
-      (expired?.modifiedCount || 0) > 0 ||
-      (unfeature?.modifiedCount || 0) > 0 ||
-      (deleted?.deletedCount || 0) > 0
-    ) {
+    if (expired.modifiedCount || deleted.deletedCount) {
       console.log(
-        `🕒 [CRON] Expirate: ${expired?.modifiedCount || 0} | Unfeatured: ${
-          unfeature?.modifiedCount || 0
-        } | Șterse: ${deleted?.deletedCount || 0}`
+        `🧹 CRON OK → Expirate: ${expired.modifiedCount}, Șterse: ${deleted.deletedCount}`
       );
     }
   } catch (err) {
-    console.error("❌ Eroare CRON:", err);
+    console.error("❌ Eroare CRON anunțuri:", err);
   }
 });
 
