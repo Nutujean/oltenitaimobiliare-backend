@@ -56,7 +56,16 @@ router.get("/", async (req, res) => {
       ];
     }
 
-    const listings = await Listing.find(filter).sort(sortQuery).lean().exec();
+    const finalSort =
+  sortParam === "cheapest"
+    ? { featuredUntil: -1, price: 1, createdAt: -1 }
+    : sortParam === "expensive"
+    ? { featuredUntil: -1, price: -1, createdAt: -1 }
+    : sortParam === "oldest"
+    ? { featuredUntil: -1, createdAt: 1 }
+    : { featuredUntil: -1, createdAt: -1 };
+
+const listings = await Listing.find(filter).sort(finalSort).lean().exec();
     res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings:", err);
