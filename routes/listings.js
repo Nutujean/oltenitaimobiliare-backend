@@ -1,4 +1,4 @@
-// backend/src/routes/listings.js
+// routes/listings.js
 import express from "express";
 import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
@@ -14,64 +14,50 @@ const normalizePhone = (value = "") => {
   return digits.replace(/^4/, ""); // 4072... -> 072...
 };
 
-// câte zile după expirarea anunțului gratuit NU mai permitem alt gratuit pe același număr
-const FREE_COOLDOWN_DAYS = 15;
-
 /* =======================================================
    🟩 GET toate anunțurile (public)
+   - promovatele primele
+   - NU mai golim lista când expiră (nu mai excludem din query)
+   - suportă filtre: sort, category, location, intent, q
 ======================================================= */
 router.get("/", async (req, res) => {
   try {
-    const now = new Date();
     const sortParam = req.query.sort || "newest";
-    const category = req.query.category;
-    const location = req.query.location;
-    const intent = req.query.intent;
-    const q = req.query.q;
+    const category = (req.query.category || "").trim();
+    const location = (req.query.location || "").trim();
+    const intent = (req.query.intent || "").trim();
+    const q = (req.query.q || "").trim();
 
-    let sortQuery = { createdAt: -1 };
-    if (sortParam === "cheapest") sortQuery = { price: 1 };
-    if (sortParam === "expensive") sortQuery = { price: -1 };
-    if (sortParam === "oldest") sortQuery = { createdAt: 1 };
+    // ✅ sortare: promoted first (featured + featuredUntil), apoi createdAt
+    let sortQuery = { featured: -1, featuredUntil: -1, createdAt: -1 };
+    if (sortParam === "cheapest") sortQuery = { featured: -1, featuredUntil: -1, price: 1, createdAt: -1 };
+    if (sortParam === "expensive") sortQuery = { featured: -1, featuredUntil: -1, price: -1, createdAt: -1 };
+    if (sortParam === "oldest") sortQuery = { featured: -1, featuredUntil: -1, createdAt: 1 };
 
-    const baseFilter = {
-      $or: [
-        { featuredUntil: { $gte: now } },
-        { expiresAt: { $gte: now } },
-        { featuredUntil: null, expiresAt: null },
-        { isFree: { $exists: false } },
-      ],
-    };
+    // ✅ Construim filtre fără să excludem expiratele
+    const and = [];
 
-    const filter = { ...baseFilter };
-    if (category) filter.category = category;
-    if (location) filter.location = location;
-    if (intent) filter.intent = intent;
+    if (category) and.push({ category });
+    if (location) and.push({ location });
+    if (intent) and.push({ intent });
 
     if (q) {
-      filter.$or = [
-        { title: { $regex: q, $options: "i" } },
-        { description: { $regex: q, $options: "i" } },
-        { location: { $regex: q, $options: "i" } },
-      ];
+      and.push({
+        $or: [
+          { title: { $regex: q, $options: "i" } },
+          { description: { $regex: q, $options: "i" } },
+          { location: { $regex: q, $options: "i" } },
+        ],
+      });
     }
 
-    const finalSort =
-  sortParam === "cheapest"
-    ? { featuredUntil: -1, price: 1, createdAt: -1 }
-    : sortParam === "expensive"
-    ? { featuredUntil: -1, price: -1, createdAt: -1 }
-    : sortParam === "oldest"
-    ? { featuredUntil: -1, createdAt: 1 }
-    : { featuredUntil: -1, createdAt: -1 };
+    const filter = and.length ? { $and: and } : {};
 
-const listings = await Listing.find(filter).sort(finalSort).lean().exec();
+    const listings = await Listing.find(filter).sort(sortQuery).lean().exec();
     res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings:", err);
-    res
-      .status(500)
-      .json({ error: "Eroare server la încărcarea anunțurilor." });
+    res.status(500).json({ error: "Eroare server la încărcarea anunțurilor." });
   }
 });
 
@@ -88,9 +74,7 @@ router.get("/mine", protect, async (req, res) => {
     res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings/mine:", err);
-    res
-      .status(500)
-      .json({ error: "Eroare server la încărcarea anunțurilor tale." });
+    res.status(500).json({ error: "Eroare server la încărcarea anunțurilor tale." });
   }
 });
 
@@ -110,64 +94,44 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
 
-    // ❗ AICI NU FOLOSIM req.user DELOC
     return res.json(listing);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings/:id:", err);
-    return res
-      .status(500)
-      .json({ error: "Eroare server la încărcarea anunțului." });
+    return res.status(500).json({ error: "Eroare server la încărcarea anunțului." });
   }
 });
+
 /* =======================================================
    🟧 POST creare anunț nou (autentificat)
    - primește FormData cu "images"
-   - limitează anunțurile GRATUITE pe același număr de telefon:
-     ✅ maxim 1 nepromovat
-     ✅ după expirare, alt gratuit doar după ~15 zile
+   - limitează: un singur anunț gratuit / număr (inclusiv cele vechi fără isFree)
+   - expirare: ✅ 15 zile
+   - trimite email: user (dacă are email) + admin
 ======================================================= */
 router.post("/", protect, upload.array("images", 10), async (req, res) => {
   try {
-    const {
-      title,
-      description,
-      price,
-      category,
-      location,
-      phone,
-      email,
-      intent,
-    } = req.body;
+    const { title, description, price, category, location, phone, email, intent } = req.body;
 
     if (!title || !description || !price || !category || !location || !phone) {
-      return res.status(400).json({
-        error: "Te rugăm să completezi toate câmpurile obligatorii.",
-      });
+      return res.status(400).json({ error: "Te rugăm să completezi toate câmpurile obligatorii." });
     }
 
     const numericPrice = Number(price);
     if (!numericPrice || numericPrice <= 0) {
-      return res.status(400).json({
-        error: "Preț invalid. Trebuie să fie mai mare decât 0.",
-      });
+      return res.status(400).json({ error: "Preț invalid. Trebuie să fie mai mare decât 0." });
     }
 
-    // normalizare telefon
     const normalizedPhone = normalizePhone(phone);
 
     // 🔥 REGULA: un singur anunț gratuit / număr (inclusiv cele vechi fără isFree)
     const existingFree = await Listing.findOne({
       phone: normalizedPhone,
-      $or: [
-        { isFree: true }, // anunțurile noi marcate corect
-        { isFree: { $exists: false } }, // anunțurile vechi, fără câmp isFree
-      ],
+      $or: [{ isFree: true }, { isFree: { $exists: false } }],
     }).exec();
 
     if (existingFree) {
       return res.status(400).json({
-        error:
-          "Ai deja un anunț gratuit pentru acest număr de telefon. Poți adăuga doar anunțuri promovate.",
+        error: "Ai deja un anunț gratuit pentru acest număr de telefon. Poți adăuga doar anunțuri promovate.",
         mustPay: true,
       });
     }
@@ -177,9 +141,9 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
       imageUrls = req.files.map((file) => file.path || file.secure_url);
     }
 
-    // expirare la 30 zile
+    // ✅ expirare la 15 zile
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 10);
+    expiresAt.setDate(expiresAt.getDate() + 15);
 
     const listing = new Listing({
       user: req.user._id,
@@ -200,9 +164,8 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
 
     await listing.save();
 
-    // ✅ EMAILURI (NU schimbăm nimic în logica anunțului; doar trimitem notificări)
+    // ✅ EMAILURI (user + admin)
     try {
-      // către user (dacă există email)
       if (email) {
         await sendEmail({
           to: email,
@@ -214,13 +177,11 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
               <p><b>Titlu:</b> ${title}</p>
               <p><b>Localitate:</b> ${location}</p>
               <p><b>Telefon:</b> ${normalizedPhone}</p>
-              <p>Sărbători cu bine! 🎄</p>
             </div>
           `,
         });
       }
 
-      // către admin (mereu)
       await sendEmail({
         to: "oltenitaimobiliare@gmail.com",
         subject: "📩 Anunț nou publicat pe OltenitaImobiliare.ro",
@@ -249,6 +210,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     res.status(500).json({ error: "Eroare server la adăugarea anunțului." });
   }
 });
+
 /* =======================================================
    🟧 PUT actualizare anunț
 ======================================================= */
@@ -266,21 +228,10 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
     }
 
     if (listing.user && listing.user.toString() !== req.user._id.toString()) {
-      return res
-        .status(403)
-        .json({ error: "Nu ai dreptul să modifici acest anunț." });
+      return res.status(403).json({ error: "Nu ai dreptul să modifici acest anunț." });
     }
 
-    const {
-      title,
-      description,
-      price,
-      category,
-      location,
-      phone,
-      email,
-      intent,
-    } = req.body;
+    const { title, description, price, category, location, phone, email, intent } = req.body;
 
     if (title !== undefined) listing.title = title;
     if (description !== undefined) listing.description = description;
@@ -299,9 +250,7 @@ router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
     res.json(listing);
   } catch (err) {
     console.error("❌ Eroare PUT /api/listings/:id:", err);
-    res
-      .status(500)
-      .json({ error: "Eroare server la actualizarea anunțului." });
+    res.status(500).json({ error: "Eroare server la actualizarea anunțului." });
   }
 });
 
@@ -322,18 +271,14 @@ router.delete("/:id", protect, async (req, res) => {
     }
 
     if (listing.user && listing.user.toString() !== req.user._id.toString()) {
-      return res
-        .status(403)
-        .json({ error: "Nu ai dreptul să ștergi acest anunț." });
+      return res.status(403).json({ error: "Nu ai dreptul să ștergi acest anunț." });
     }
 
     await listing.deleteOne();
     res.json({ success: true, message: "Anunț șters cu succes." });
   } catch (err) {
     console.error("❌ Eroare DELETE /api/listings/:id:", err);
-    res
-      .status(500)
-      .json({ error: "Eroare server la ștergerea anunțului." });
+    res.status(500).json({ error: "Eroare server la ștergerea anunțului." });
   }
 });
 
