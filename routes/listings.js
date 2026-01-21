@@ -25,6 +25,7 @@ const normalizePhone = (value = "") => {
    - promovatele primele
    - activele înaintea celor expirate
    - expiratele rămân jos
+   - ✅ EXCLUDE drafturile (visibility="draft")
 ======================================================= */
 router.get("/", async (req, res) => {
   try {
@@ -36,7 +37,7 @@ router.get("/", async (req, res) => {
 
     // 🔥 sortare: ACTIVE + PROMOVATE primele
     let sortQuery = {
-      status: 1, // disponibil < expirat
+      status: 1, // disponibil < expirat (ai rămas cu sort vechi; nu îl stric)
       featured: -1,
       featuredUntil: -1,
       createdAt: -1,
@@ -53,6 +54,8 @@ router.get("/", async (req, res) => {
     }
 
     const and = [];
+    and.push({ visibility: "public" }); // ✅ doar public, NU draft
+
     if (category) and.push({ category });
     if (location) and.push({ location });
     if (intent) and.push({ intent });
@@ -79,6 +82,7 @@ router.get("/", async (req, res) => {
 
 /* =======================================================
    🟦 GET anunțurile mele (autentificat)
+   - ✅ include și drafturi (pentru că sunt ale userului)
 ======================================================= */
 router.get("/mine", protect, async (req, res) => {
   try {
@@ -98,6 +102,8 @@ router.get("/mine", protect, async (req, res) => {
 
 /* =======================================================
    🟦 GET un singur anunț după ID (public)
+   - (drafturile sunt accesibile doar dacă știi ID-ul,
+     dar nu apar în listarea publică; asta e ok)
 ======================================================= */
 router.get("/:id", async (req, res) => {
   try {
@@ -122,12 +128,11 @@ router.get("/:id", async (req, res) => {
 });
 
 /* =======================================================
-   🟧 POST creare anunț nou (autentificat)
+   🟧 POST creare anunț nou (autentificat) - PUBLIC
    - primește FormData cu "images"
    - FREE: 1 anunț gratuit activ / cont + cooldown după expirare
-   - PAID (isFree=false): nelimitat
+   - PAID (isFree=false): 🔒 blocat până legăm plata (402)
    - expirare: ✅ 15 zile
-   - trimite email: user (dacă are email) + admin
 ======================================================= */
 router.post("/", protect, upload.array("images", 15), async (req, res) => {
   try {
@@ -151,14 +156,15 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
 
     // ✅ stabilim tipul anunțului: FREE vs PAID (default: FREE)
     const isFreeListing = String(isFree ?? "true") === "true";
-// 🔒 IMPORTANT: nu permitem creare PAID fără plată confirmată
-// (temporar: până legăm flow-ul Stripe pentru "anunț nou promovat")
-if (!isFreeListing) {
-  return res.status(402).json({
-    error: "Pentru a publica un anunț Promovat trebuie să finalizezi plata.",
-    mustPay: true,
-  });
-}
+
+    // 🔒 IMPORTANT: nu permitem creare PAID fără plată confirmată
+    // (temporar: până legăm flow-ul Stripe pentru "anunț nou promovat")
+    if (!isFreeListing) {
+      return res.status(402).json({
+        error: "Pentru a publica un anunț Promovat trebuie să finalizezi plata.",
+        mustPay: true,
+      });
+    }
 
     // ✅ limită imagini în funcție de tip (FREE 10 / PAID 15)
     const maxImages = isFreeListing ? 10 : 15;
@@ -181,6 +187,7 @@ if (!isFreeListing) {
         user: req.user._id,
         isFree: true,
         expiresAt: { $gt: new Date() },
+        visibility: "public",
       }).lean();
 
       if (activeFree) {
@@ -190,7 +197,7 @@ if (!isFreeListing) {
         return res.status(400).json({
           error:
             `Poți păstra anunțul gratuit existent (mai este valabil ~${daysLeft} zile). ` +
-            `Pentru anunțuri suplimentare, promovează unul dintre anunțurile tale sau așteaptă expirarea.`,
+            `Pentru anunțuri suplimentare, salvează ca draft și plătește ca să publici.`,
           mustPay: true,
         });
       }
@@ -227,6 +234,8 @@ if (!isFreeListing) {
       email,
       intent,
       images: imageUrls,
+
+      visibility: "public", // ✅ public
       isFree: isFreeListing, // ✅ FREE/PAID din request
       featured: false,
       featuredUntil: null,
@@ -292,6 +301,70 @@ if (!isFreeListing) {
 });
 
 /* =======================================================
+   🟨 POST salvare DRAFT (autentificat)
+   - salvează anunțul în cont, dar NU îl afișează public
+   - pentru anunțuri 2/3/4... care urmează să fie plătite
+======================================================= */
+router.post("/draft", protect, upload.array("images", 15), async (req, res) => {
+  try {
+    const { title, description, price, category, location, phone, email, intent } = req.body;
+
+    if (!title || !description || !price || !category || !location || !phone) {
+      return res.status(400).json({ error: "Completează toate câmpurile obligatorii." });
+    }
+
+    const numericPrice = Number(price);
+    if (!numericPrice || numericPrice <= 0) {
+      return res.status(400).json({ error: "Preț invalid." });
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+
+    // limită draft: max 15
+    if (req.files && req.files.length > 15) {
+      return res.status(400).json({ error: "Maxim 15 imagini pentru draft." });
+    }
+
+    let imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      imageUrls = req.files.map((file) => file.path || file.secure_url);
+    }
+
+    const draft = new Listing({
+      user: req.user._id,
+      title,
+      description,
+      price: numericPrice,
+      category,
+      location,
+      phone: normalizedPhone,
+      email,
+      intent,
+      images: imageUrls,
+
+      visibility: "draft", // ✅ nu apare public
+      isFree: false,       // ✅ destinat plății
+      expiresAt: null,     // ✅ nu expiră ca draft
+
+      featured: false,
+      featuredUntil: null,
+      status: "disponibil",
+    });
+
+    await draft.save();
+
+    return res.status(201).json({
+      ok: true,
+      draftId: draft._id,
+      message: "Draft salvat.",
+    });
+  } catch (err) {
+    console.error("❌ Eroare POST /api/listings/draft:", err);
+    return res.status(500).json({ error: "Eroare server la salvarea draftului." });
+  }
+});
+
+/* =======================================================
    🟧 PUT actualizare anunț
 ======================================================= */
 router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
@@ -311,8 +384,7 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
       return res.status(403).json({ error: "Nu ai dreptul să modifici acest anunț." });
     }
 
-    const { title, description, price, category, location, phone, email, intent } =
-      req.body;
+    const { title, description, price, category, location, phone, email, intent } = req.body;
 
     if (title !== undefined) listing.title = title;
     if (description !== undefined) listing.description = description;
@@ -322,10 +394,6 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
     if (phone !== undefined) listing.phone = normalizePhone(phone);
     if (email !== undefined) listing.email = email;
     if (intent !== undefined) listing.intent = intent;
-
-    // (opțional) dacă vrei aceeași logică și la edit:
-    // const maxImages = listing.isFree ? 10 : 15;
-    // if (req.files && req.files.length > maxImages) return res.status(400).json({ error: `Maxim ${maxImages} imagini.` });
 
     if (req.files && req.files.length > 0) {
       listing.images = req.files.map((file) => file.path || file.secure_url);
