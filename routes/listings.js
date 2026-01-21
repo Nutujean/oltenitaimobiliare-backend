@@ -151,6 +151,14 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
 
     // ✅ stabilim tipul anunțului: FREE vs PAID (default: FREE)
     const isFreeListing = String(isFree ?? "true") === "true";
+// 🔒 IMPORTANT: nu permitem creare PAID fără plată confirmată
+// (temporar: până legăm flow-ul Stripe pentru "anunț nou promovat")
+if (!isFreeListing) {
+  return res.status(402).json({
+    error: "Pentru a publica un anunț Promovat trebuie să finalizezi plata.",
+    mustPay: true,
+  });
+}
 
     // ✅ limită imagini în funcție de tip (FREE 10 / PAID 15)
     const maxImages = isFreeListing ? 10 : 15;
