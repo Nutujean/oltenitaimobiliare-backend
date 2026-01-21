@@ -137,7 +137,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     }
 
     const normalizedPhone = normalizePhone(phone);
-const COOLDOWN_DAYS = 7; // setezi tu (7/14/30)
+const COOLDOWN_DAYS = 15; // setezi tu (7/14/30)
 
 const dbUser = await User.findById(req.user._id).exec();
 if (!dbUser) {
@@ -201,12 +201,6 @@ if (activeFree) {
     });
 
     await listing.save();
-// ✅ pornește cooldown după publicarea unui FREE
-const COOLDOWN_DAYS = 15;
-dbUser.freeCooldownUntil = new Date(
-  new Date(expiresAt).getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000
-);
-await dbUser.save();
 
 
     // ✅ EMAILURI (user + admin)
