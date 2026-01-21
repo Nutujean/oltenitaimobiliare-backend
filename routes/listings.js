@@ -125,7 +125,7 @@ router.get("/:id", async (req, res) => {
    - expirare: ✅ 15 zile
    - trimite email: user (dacă are email) + admin
 ======================================================= */
-router.post("/", protect, upload.array("images", 10), async (req, res) => {
+router.post("/", protect, upload.array("images", 15), async (req, res) => {
   try {
     const { title, description, price, category, location, phone, email, intent, isFree } = req.body;
 
@@ -141,8 +141,14 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     const normalizedPhone = normalizePhone(phone);
 
     // ✅ stabilim tipul anunțului: FREE vs PAID (default: FREE)
-    const isFreeListing = String(isFree ?? "true") === "true";
-
+     const isFreeListing = String(isFree ?? "true") === "true";
++
++const maxImages = isFreeListing ? 10 : 15;
++if (req.files && req.files.length > maxImages) {
++  return res.status(400).json({
++    error: `Maxim ${maxImages} imagini pentru acest tip de anunț.`,
++  });
++}
     // user din DB (pentru cooldown)
     const dbUser = await User.findById(req.user._id).exec();
     if (!dbUser) {
@@ -269,7 +275,7 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
 /* =======================================================
    🟧 PUT actualizare anunț
 ======================================================= */
-router.put("/:id", protect, upload.array("images", 10), async (req, res) => {
+router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
   try {
     const { id } = req.params;
 
