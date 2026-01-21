@@ -122,6 +122,22 @@ router.get("/:id", async (req, res) => {
     if (!listing) {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
+// ✅ LIMITĂ IMAGINI LA EDIT (FREE 10 / PAID 15)
+const maxImages = listing.isFree ? 10 : 15;
+
+const existingImagesRaw = req.body.existingImages ?? [];
+const existingImages = Array.isArray(existingImagesRaw)
+  ? existingImagesRaw.filter(Boolean)
+  : [existingImagesRaw].filter(Boolean);
+
+const uploadedCount = (req.files || []).length;
+const total = existingImages.length + uploadedCount;
+
+if (total > maxImages) {
+  return res.status(400).json({
+    error: `Maxim ${maxImages} imagini pentru acest tip de anunț.`,
+  });
+}
 
     return res.json(listing);
   } catch (err) {
