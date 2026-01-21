@@ -400,9 +400,24 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
     if (email !== undefined) listing.email = email;
     if (intent !== undefined) listing.intent = intent;
 
-    if (req.files && req.files.length > 0) {
-      listing.images = req.files.map((file) => file.path || file.secure_url);
-    }
+    // ✅ păstrăm imaginile existente trimise din frontend + adăugăm cele noi uploadate
+const existing = []
+  .concat(req.body.existingImages || [])
+  .filter(Boolean);
+
+// dacă vine ca string unic (când e doar una)
+const existingImages = Array.isArray(existing) ? existing : [existing];
+
+// imagini noi din upload (Cloudinary)
+const uploadedImages = (req.files || []).map((file) => file.path || file.secure_url).filter(Boolean);
+
+// combinăm: întâi cele păstrate, apoi cele noi
+const combined = [...existingImages, ...uploadedImages];
+
+// dacă user nu a trimis nimic, nu stricăm imaginile
+if (combined.length > 0) {
+  listing.images = combined;
+}
 
     await listing.save();
     res.json(listing);
