@@ -54,7 +54,12 @@ router.get("/", async (req, res) => {
     }
 
     const and = [];
-    and.push({ visibility: "public" }); // ✅ doar public, NU draft
+and.push({
+  $or: [
+    { visibility: "public" },
+    { visibility: { $exists: false } }, // ✅ anunțurile vechi
+  ],
+});
 
     if (category) and.push({ category });
     if (location) and.push({ location });
