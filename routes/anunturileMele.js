@@ -6,10 +6,20 @@ const router = express.Router();
 
 /**
  * ✅ Returnează anunțurile utilizatorului logat
+ * - compatibil cu schema nouă (user)
+ * - compatibil cu schema veche (userId)
  */
 router.get("/anunturile-mele", auth, async (req, res) => {
   try {
-    const anunturi = await Listing.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    const userMongoId = req.user._id || req.user.id;
+
+    const anunturi = await Listing.find({
+      $or: [
+        { user: userMongoId },
+        { userId: userMongoId }, // fallback pt anunțuri vechi
+      ],
+    }).sort({ createdAt: -1 });
+
     res.json(anunturi);
   } catch (err) {
     console.error("❌ Eroare la /api/anunturile-mele:", err);
