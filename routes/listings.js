@@ -155,18 +155,24 @@ if (dbUser.freeCooldownUntil && new Date(dbUser.freeCooldownUntil) > new Date())
   });
 }
 
-    // 🔥 REGULA: un singur anunț gratuit / număr (inclusiv cele vechi fără isFree)
-    const existingFree = await Listing.findOne({
+    // ✅ REGULA OLX: un singur anunț gratuit ACTIV / cont
+const activeFree = await Listing.findOne({
   user: req.user._id,
-  $or: [{ isFree: true }, { isFree: { $exists: false } }],
-}).exec();
+  isFree: true,
+  expiresAt: { $gt: new Date() },
+}).lean();
 
-    if (existingFree) {
-      return res.status(400).json({
-        error: "Ai deja un anunț gratuit pentru acest număr de telefon. Poți adăuga doar anunțuri promovate.",
-        mustPay: true,
-      });
-    }
+if (activeFree) {
+  const daysLeft = Math.ceil(
+    (new Date(activeFree.expiresAt) - new Date()) / (1000 * 60 * 60 * 24)
+  );
+  return res.status(400).json({
+    error:
+      `Poți păstra anunțul gratuit existent (mai este valabil ~${daysLeft} zile). ` +
+      `Pentru anunțuri suplimentare, promovează unul dintre anunțurile tale sau așteaptă expirarea.`,
+    mustPay: true,
+  });
+}
 
     let imageUrls = [];
     if (req.files && req.files.length > 0) {
@@ -196,8 +202,12 @@ if (dbUser.freeCooldownUntil && new Date(dbUser.freeCooldownUntil) > new Date())
 
     await listing.save();
 // ✅ pornește cooldown după publicarea unui FREE
-dbUser.freeCooldownUntil = new Date(Date.now() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+const COOLDOWN_DAYS = 15;
+dbUser.freeCooldownUntil = new Date(
+  new Date(expiresAt).getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000
+);
 await dbUser.save();
+
 
     // ✅ EMAILURI (user + admin)
     try {
