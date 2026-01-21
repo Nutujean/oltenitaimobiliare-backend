@@ -90,7 +90,9 @@ router.get("/mine", protect, async (req, res) => {
     res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings/mine:", err);
-    res.status(500).json({ error: "Eroare server la încărcarea anunțurilor tale." });
+    res
+      .status(500)
+      .json({ error: "Eroare server la încărcarea anunțurilor tale." });
   }
 });
 
@@ -113,7 +115,9 @@ router.get("/:id", async (req, res) => {
     return res.json(listing);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings/:id:", err);
-    return res.status(500).json({ error: "Eroare server la încărcarea anunțului." });
+    return res
+      .status(500)
+      .json({ error: "Eroare server la încărcarea anunțului." });
   }
 });
 
@@ -127,28 +131,35 @@ router.get("/:id", async (req, res) => {
 ======================================================= */
 router.post("/", protect, upload.array("images", 15), async (req, res) => {
   try {
-    const { title, description, price, category, location, phone, email, intent, isFree } = req.body;
+    const { title, description, price, category, location, phone, email, intent, isFree } =
+      req.body;
 
     if (!title || !description || !price || !category || !location || !phone) {
-      return res.status(400).json({ error: "Te rugăm să completezi toate câmpurile obligatorii." });
+      return res
+        .status(400)
+        .json({ error: "Te rugăm să completezi toate câmpurile obligatorii." });
     }
 
     const numericPrice = Number(price);
     if (!numericPrice || numericPrice <= 0) {
-      return res.status(400).json({ error: "Preț invalid. Trebuie să fie mai mare decât 0." });
+      return res
+        .status(400)
+        .json({ error: "Preț invalid. Trebuie să fie mai mare decât 0." });
     }
 
     const normalizedPhone = normalizePhone(phone);
 
     // ✅ stabilim tipul anunțului: FREE vs PAID (default: FREE)
-     const isFreeListing = String(isFree ?? "true") === "true";
-+
-+const maxImages = isFreeListing ? 10 : 15;
-+if (req.files && req.files.length > maxImages) {
-+  return res.status(400).json({
-+    error: `Maxim ${maxImages} imagini pentru acest tip de anunț.`,
-+  });
-+}
+    const isFreeListing = String(isFree ?? "true") === "true";
+
+    // ✅ limită imagini în funcție de tip (FREE 10 / PAID 15)
+    const maxImages = isFreeListing ? 10 : 15;
+    if (req.files && req.files.length > maxImages) {
+      return res.status(400).json({
+        error: `Maxim ${maxImages} imagini pentru acest tip de anunț.`,
+      });
+    }
+
     // user din DB (pentru cooldown)
     const dbUser = await User.findById(req.user._id).exec();
     if (!dbUser) {
@@ -292,7 +303,8 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
       return res.status(403).json({ error: "Nu ai dreptul să modifici acest anunț." });
     }
 
-    const { title, description, price, category, location, phone, email, intent } = req.body;
+    const { title, description, price, category, location, phone, email, intent } =
+      req.body;
 
     if (title !== undefined) listing.title = title;
     if (description !== undefined) listing.description = description;
@@ -302,6 +314,10 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
     if (phone !== undefined) listing.phone = normalizePhone(phone);
     if (email !== undefined) listing.email = email;
     if (intent !== undefined) listing.intent = intent;
+
+    // (opțional) dacă vrei aceeași logică și la edit:
+    // const maxImages = listing.isFree ? 10 : 15;
+    // if (req.files && req.files.length > maxImages) return res.status(400).json({ error: `Maxim ${maxImages} imagini.` });
 
     if (req.files && req.files.length > 0) {
       listing.images = req.files.map((file) => file.path || file.secure_url);
