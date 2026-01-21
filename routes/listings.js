@@ -2,6 +2,7 @@
 import express from "express";
 import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
+import User from "../models/User.js";
 import { protect } from "../middleware/authMiddleware.js";
 import upload from "../middleware/upload.js";
 import { sendEmail } from "../utils/sendEmail.js";
@@ -136,12 +137,29 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     }
 
     const normalizedPhone = normalizePhone(phone);
+const COOLDOWN_DAYS = 7; // setezi tu (7/14/30)
+
+const dbUser = await User.findById(req.user._id).exec();
+if (!dbUser) {
+  return res.status(401).json({ error: "Utilizator inexistent." });
+}
+
+// ✅ dacă e în cooldown → blochează FREE
+if (dbUser.freeCooldownUntil && new Date(dbUser.freeCooldownUntil) > new Date()) {
+  const msLeft = new Date(dbUser.freeCooldownUntil) - new Date();
+  const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+  return res.status(400).json({
+    error: `Poți publica un nou anunț gratuit peste ${daysLeft} zile.`,
+    mustPay: true,
+    cooldownUntil: dbUser.freeCooldownUntil,
+  });
+}
 
     // 🔥 REGULA: un singur anunț gratuit / număr (inclusiv cele vechi fără isFree)
     const existingFree = await Listing.findOne({
-      phone: normalizedPhone,
-      $or: [{ isFree: true }, { isFree: { $exists: false } }],
-    }).exec();
+  user: req.user._id,
+  $or: [{ isFree: true }, { isFree: { $exists: false } }],
+}).exec();
 
     if (existingFree) {
       return res.status(400).json({
@@ -177,6 +195,9 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     });
 
     await listing.save();
+// ✅ pornește cooldown după publicarea unui FREE
+dbUser.freeCooldownUntil = new Date(Date.now() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+await dbUser.save();
 
     // ✅ EMAILURI (user + admin)
     try {

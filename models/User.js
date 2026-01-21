@@ -23,10 +23,15 @@ const UserSchema = new Schema(
     },
 
     // ✅ CÂMP TELEFON – lipsea!
-    phone: {
-      type: String,
-      trim: true,
-    },
+phone: {
+  type: String,
+  trim: true,
+},
+
+// ✅ OLX-like cooldown pentru anunțuri gratuite
+freeCooldownUntil: { type: Date, default: null },
+
+verified: { type: Boolean, default: false },
 
     verified: { type: Boolean, default: false },
     verificationToken: { type: String },
