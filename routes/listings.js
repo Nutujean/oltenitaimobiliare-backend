@@ -9,6 +9,11 @@ import { sendEmail } from "../utils/sendEmail.js";
 
 const router = express.Router();
 
+// ✅ CONFIG OLX-like
+// - FREE: 1 activ / cont + cooldown după expirare
+// - PAID: nelimitat
+const COOLDOWN_DAYS = 15;
+
 // 🔧 helper normalizare telefon (doar cifre, scoatem 4 din față dacă e 407..)
 const normalizePhone = (value = "") => {
   const digits = String(value).replace(/\D/g, "");
@@ -31,7 +36,7 @@ router.get("/", async (req, res) => {
 
     // 🔥 sortare: ACTIVE + PROMOVATE primele
     let sortQuery = {
-      status: 1,          // disponibil < expirat
+      status: 1, // disponibil < expirat
       featured: -1,
       featuredUntil: -1,
       createdAt: -1,
@@ -64,11 +69,7 @@ router.get("/", async (req, res) => {
 
     const filter = and.length ? { $and: and } : {};
 
-    const listings = await Listing.find(filter)
-      .sort(sortQuery)
-      .lean()
-      .exec();
-
+    const listings = await Listing.find(filter).sort(sortQuery).lean().exec();
     res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings:", err);
@@ -119,13 +120,14 @@ router.get("/:id", async (req, res) => {
 /* =======================================================
    🟧 POST creare anunț nou (autentificat)
    - primește FormData cu "images"
-   - limitează: un singur anunț gratuit / număr (inclusiv cele vechi fără isFree)
+   - FREE: 1 anunț gratuit activ / cont + cooldown după expirare
+   - PAID (isFree=false): nelimitat
    - expirare: ✅ 15 zile
    - trimite email: user (dacă are email) + admin
 ======================================================= */
 router.post("/", protect, upload.array("images", 10), async (req, res) => {
   try {
-    const { title, description, price, category, location, phone, email, intent } = req.body;
+    const { title, description, price, category, location, phone, email, intent, isFree } = req.body;
 
     if (!title || !description || !price || !category || !location || !phone) {
       return res.status(400).json({ error: "Te rugăm să completezi toate câmpurile obligatorii." });
@@ -137,42 +139,48 @@ router.post("/", protect, upload.array("images", 10), async (req, res) => {
     }
 
     const normalizedPhone = normalizePhone(phone);
-const COOLDOWN_DAYS = 15; // setezi tu (7/14/30)
 
-const dbUser = await User.findById(req.user._id).exec();
-if (!dbUser) {
-  return res.status(401).json({ error: "Utilizator inexistent." });
-}
+    // ✅ stabilim tipul anunțului: FREE vs PAID (default: FREE)
+    const isFreeListing = String(isFree ?? "true") === "true";
 
-// ✅ dacă e în cooldown → blochează FREE
-if (dbUser.freeCooldownUntil && new Date(dbUser.freeCooldownUntil) > new Date()) {
-  const msLeft = new Date(dbUser.freeCooldownUntil) - new Date();
-  const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
-  return res.status(400).json({
-    error: `Poți publica un nou anunț gratuit peste ${daysLeft} zile.`,
-    mustPay: true,
-    cooldownUntil: dbUser.freeCooldownUntil,
-  });
-}
+    // user din DB (pentru cooldown)
+    const dbUser = await User.findById(req.user._id).exec();
+    if (!dbUser) {
+      return res.status(401).json({ error: "Utilizator inexistent." });
+    }
 
-    // ✅ REGULA OLX: un singur anunț gratuit ACTIV / cont
-const activeFree = await Listing.findOne({
-  user: req.user._id,
-  isFree: true,
-  expiresAt: { $gt: new Date() },
-}).lean();
+    // ✅ Limitare + cooldown DOAR pentru anunțuri GRATUITE
+    if (isFreeListing) {
+      // ✅ 1 anunț gratuit ACTIV / cont
+      const activeFree = await Listing.findOne({
+        user: req.user._id,
+        isFree: true,
+        expiresAt: { $gt: new Date() },
+      }).lean();
 
-if (activeFree) {
-  const daysLeft = Math.ceil(
-    (new Date(activeFree.expiresAt) - new Date()) / (1000 * 60 * 60 * 24)
-  );
-  return res.status(400).json({
-    error:
-      `Poți păstra anunțul gratuit existent (mai este valabil ~${daysLeft} zile). ` +
-      `Pentru anunțuri suplimentare, promovează unul dintre anunțurile tale sau așteaptă expirarea.`,
-    mustPay: true,
-  });
-}
+      if (activeFree) {
+        const daysLeft = Math.ceil(
+          (new Date(activeFree.expiresAt) - new Date()) / (1000 * 60 * 60 * 24)
+        );
+        return res.status(400).json({
+          error:
+            `Poți păstra anunțul gratuit existent (mai este valabil ~${daysLeft} zile). ` +
+            `Pentru anunțuri suplimentare, promovează unul dintre anunțurile tale sau așteaptă expirarea.`,
+          mustPay: true,
+        });
+      }
+
+      // ✅ cooldown după expirare
+      if (dbUser.freeCooldownUntil && new Date(dbUser.freeCooldownUntil) > new Date()) {
+        const msLeft = new Date(dbUser.freeCooldownUntil) - new Date();
+        const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+        return res.status(400).json({
+          error: `Poți publica un nou anunț gratuit peste ${daysLeft} zile.`,
+          mustPay: true,
+          cooldownUntil: dbUser.freeCooldownUntil,
+        });
+      }
+    }
 
     let imageUrls = [];
     if (req.files && req.files.length > 0) {
@@ -194,7 +202,7 @@ if (activeFree) {
       email,
       intent,
       images: imageUrls,
-      isFree: true,
+      isFree: isFreeListing, // ✅ FREE/PAID din request
       featured: false,
       featuredUntil: null,
       expiresAt,
@@ -202,6 +210,13 @@ if (activeFree) {
 
     await listing.save();
 
+    // ✅ dacă e FREE, setăm cooldown = expiresAt + COOLDOWN_DAYS
+    if (isFreeListing) {
+      dbUser.freeCooldownUntil = new Date(
+        new Date(expiresAt).getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000
+      );
+      await dbUser.save();
+    }
 
     // ✅ EMAILURI (user + admin)
     try {
@@ -234,6 +249,7 @@ if (activeFree) {
             <p><b>Telefon:</b> ${normalizedPhone}</p>
             <p><b>Email utilizator:</b> ${email || "-"}</p>
             <p><b>ID anunț:</b> ${listing._id}</p>
+            <p><b>Tip:</b> ${isFreeListing ? "FREE" : "PAID"}</p>
           </div>
         `,
       });
