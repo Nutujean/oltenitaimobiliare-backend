@@ -33,7 +33,7 @@ app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-admin-key"],
   })
 );
 app.use(express.json({ limit: "10mb" }));
@@ -108,6 +108,50 @@ app.get("/", (req, res) => {
     message: "Oltenita Imobiliare API activ ✅",
     time: new Date().toISOString(),
   });
+});
+/* =======================================================
+   🔐 ADMIN — PROMOVARE GRATUITĂ (fără Stripe)
+   Header: x-admin-key: <ADMIN_KEY din .env>
+   Body: { "days": 7 }  (sau 14 / 30)
+======================================================= */
+app.post("/api/admin/promote/:id", async (req, res) => {
+  try {
+    const adminKey = req.headers["x-admin-key"];
+
+    if (!process.env.ADMIN_KEY) {
+      return res.status(500).json({ ok: false, error: "ADMIN_KEY lipsă pe server." });
+    }
+
+    if (!adminKey || adminKey !== process.env.ADMIN_KEY) {
+      return res.status(403).json({ ok: false, error: "Acces interzis (nu ești admin)." });
+    }
+
+    const { id } = req.params;
+    const daysRaw = req.body?.days ?? 30; // default 30 zile
+    const days = Math.max(1, Math.min(365, Number(daysRaw) || 30)); // 1..365
+
+    const featuredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+    const updated = await Listing.findByIdAndUpdate(
+      id,
+      { featuredUntil },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ ok: false, error: "Anunțul nu există." });
+    }
+
+    return res.json({
+      ok: true,
+      message: `Anunț promovat gratuit (admin) pentru ${days} zile.`,
+      featuredUntil: updated.featuredUntil,
+      listingId: updated._id,
+    });
+  } catch (err) {
+    console.error("❌ ADMIN PROMOTE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "Eroare server." });
+  }
 });
 
 console.log("✔ Toate rutele Express au fost montate corect.");
