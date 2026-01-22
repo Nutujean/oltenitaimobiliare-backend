@@ -167,17 +167,34 @@ router.get("/confirm", async (req, res) => {
 
     const featuredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
-    const updated = await Listing.findByIdAndUpdate(
-      listingId,
-      {
-        $set: {
-          featuredUntil,
-          featured: true,   // ✅ devine promovat
-          isFree: false,    // ✅ nu mai este considerat anunț gratuit
-        },
-      },
-      { new: true }
-    ).lean();
+    // ✅ dacă anunțul era draft, îl publicăm automat după plată
+const existing = await Listing.findById(listingId).select("visibility status").lean();
+if (!existing) return res.status(404).json({ error: "Anunț inexistent" });
+
+// publicare 30 zile (poți schimba)
+const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+// pregătim update-ul
+const setUpdate = {
+  isFree: false, // ✅ devine plătit
+};
+
+// dacă e draft -> îl facem public
+if (existing.visibility === "draft") {
+  setUpdate.visibility = "public";
+  setUpdate.expiresAt = expiresAt;
+  if (!existing.status) setUpdate.status = "disponibil";
+}
+
+// promovare (ca până acum)
+setUpdate.featuredUntil = featuredUntil;
+setUpdate.featured = true;
+
+const updated = await Listing.findByIdAndUpdate(
+  listingId,
+  { $set: setUpdate },
+  { new: true }
+).lean();
 
     if (!updated) return res.status(404).json({ error: "Anunț inexistent" });
 

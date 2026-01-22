@@ -482,6 +482,53 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
     res.status(500).json({ error: "Eroare server la actualizarea anunțului." });
   }
 });
+/* =======================================================
+   🟩 PUT publicare DRAFT după plată
+======================================================= */
+router.put("/:id/publish", protect, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ error: "ID invalid." });
+    }
+
+    const listing = await Listing.findById(id).exec();
+    if (!listing) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit." });
+    }
+
+    // ✅ doar owner
+    if (listing.user && listing.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "Nu ai dreptul să publici acest anunț." });
+    }
+
+    // ✅ trebuie să fie draft
+    if (listing.visibility !== "draft") {
+      return res.status(400).json({ error: "Acest anunț nu este draft." });
+    }
+
+    // ✅ publicăm anunțul (plătit)
+    listing.visibility = "public";
+    listing.isFree = false;
+
+    // ✅ setăm expirare 30 zile (poți schimba)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+    listing.expiresAt = expiresAt;
+
+    // default
+    listing.featured = false;
+    listing.featuredUntil = null;
+    if (!listing.status) listing.status = "disponibil";
+
+    await listing.save();
+    return res.json({ ok: true, listing });
+  } catch (err) {
+    console.error("❌ Eroare PUT /api/listings/:id/publish:", err);
+    return res.status(500).json({ error: "Eroare server la publicare." });
+  }
+});
 
 /* =======================================================
    🟥 DELETE ștergere anunț
