@@ -483,7 +483,7 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
   }
 });
 /* =======================================================
-   🟩 PUT publicare DRAFT după plată
+   🟩 PUT publicare DRAFT după plată (manual)
 ======================================================= */
 router.put("/:id/publish", protect, async (req, res) => {
   try {
@@ -508,18 +508,14 @@ router.put("/:id/publish", protect, async (req, res) => {
       return res.status(400).json({ error: "Acest anunț nu este draft." });
     }
 
-    // ✅ publicăm anunțul (plătit)
     listing.visibility = "public";
     listing.isFree = false;
 
-    // ✅ setăm expirare 30 zile (poți schimba)
+    // ✅ expirare 30 zile
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
     listing.expiresAt = expiresAt;
 
-    // default
-    listing.featured = false;
-    listing.featuredUntil = null;
     if (!listing.status) listing.status = "disponibil";
 
     await listing.save();
