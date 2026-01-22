@@ -36,12 +36,12 @@ router.get("/", async (req, res) => {
     const q = (req.query.q || "").trim();
 
     // 🔥 sortare: ACTIVE + PROMOVATE primele
-    let sortQuery = {
-      status: 1, // disponibil < expirat (ai rămas cu sort vechi; nu îl stric)
-      featured: -1,
-      featuredUntil: -1,
-      createdAt: -1,
-    };
+let sortQuery = {
+  status: 1,
+  featured: -1,
+  updatedAt: -1,   // ✅ urcă sus când se publică după plată
+  createdAt: -1,
+};
 
     if (sortParam === "cheapest") {
       sortQuery = { status: 1, featured: -1, price: 1, createdAt: -1 };
