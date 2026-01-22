@@ -140,26 +140,70 @@ router.post("/create-checkout-session/:listingId", async (req, res) => {
 
 /* =======================================================
    ✅ Confirmare plată (manuală, fără webhook)
+   - acceptă: cs_... (Checkout Session) / pi_... (PaymentIntent) / ch_... (Charge)
 ======================================================= */
 router.get("/confirm", async (req, res) => {
   try {
     if (!stripe)
       return res.status(500).json({ error: "Stripe cheie lipsă (STRIPE_SECRET_KEY)" });
 
-    const { session_id } = req.query;
+    let { session_id } = req.query;
     if (!session_id) return res.status(400).json({ error: "Lipsește session_id" });
 
-    const session = await stripe.checkout.sessions.retrieve(session_id, {
-      expand: ["line_items.data.price.product"],
-    });
+    let listingId = null;
+    let plan = "featured7";
+    let paymentStatus = null;
 
-    if (session.payment_status !== "paid")
-      return res.status(400).json({ error: "Plata nu este confirmată încă." });
+    // 1) Dacă e Checkout Session (cs_) - flow-ul tău existent
+    if (String(session_id).startsWith("cs_")) {
+      const session = await stripe.checkout.sessions.retrieve(session_id);
 
-    const listingId = session.metadata?.listingId;
-    const plan = session.metadata?.plan || "featured7";
-    if (!listingId || !mongoose.Types.ObjectId.isValid(listingId))
-      return res.status(400).json({ error: "Metadata lipsă/invalidă" });
+      paymentStatus = session.payment_status;
+      if (paymentStatus !== "paid")
+        return res.status(400).json({ error: "Plata nu este confirmată încă." });
+
+      listingId = session.metadata?.listingId;
+      plan = session.metadata?.plan || "featured7";
+    }
+
+    // 2) Dacă e PaymentIntent (pi_) - confirm direct din PaymentIntent
+    if (String(session_id).startsWith("pi_")) {
+      const pi = await stripe.paymentIntents.retrieve(session_id);
+
+      paymentStatus = pi.status; // "succeeded" / etc.
+      if (paymentStatus !== "succeeded") {
+        return res.status(400).json({ error: "Plata nu este confirmată încă." });
+      }
+
+      // dacă metadata există, o folosim
+      listingId = pi.metadata?.listingId || null;
+      plan = pi.metadata?.plan || "featured7";
+    }
+
+    // 3) Dacă e Charge (ch_) - luăm payment_intent din charge
+    if (String(session_id).startsWith("ch_")) {
+      const ch = await stripe.charges.retrieve(session_id);
+
+      // charge paid?
+      if (!ch.paid) return res.status(400).json({ error: "Plata nu este confirmată încă." });
+
+      const piId = ch.payment_intent;
+      if (piId && String(piId).startsWith("pi_")) {
+        const pi = await stripe.paymentIntents.retrieve(piId);
+        if (pi.status !== "succeeded")
+          return res.status(400).json({ error: "Plata nu este confirmată încă." });
+
+        listingId = pi.metadata?.listingId || null;
+        plan = pi.metadata?.plan || "featured7";
+      }
+    }
+
+    if (!listingId || !mongoose.Types.ObjectId.isValid(listingId)) {
+      return res.status(400).json({
+        error:
+          "Nu am găsit listingId în metadata plății. (Plata este ok, dar nu e legată de anunț.)",
+      });
+    }
 
     let days = 7;
     if (plan === "featured14") days = 14;
@@ -167,43 +211,40 @@ router.get("/confirm", async (req, res) => {
 
     const featuredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
-    // ✅ dacă anunțul era draft, îl publicăm automat după plată
-const existing = await Listing.findById(listingId).select("visibility status").lean();
-if (!existing) return res.status(404).json({ error: "Anunț inexistent" });
+    // ✅ dacă e draft, îl publicăm automat după plată
+    const existing = await Listing.findById(listingId).select("visibility status").lean();
+    if (!existing) return res.status(404).json({ error: "Anunț inexistent" });
 
-// publicare 30 zile (poți schimba)
-const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-// pregătim update-ul
-const setUpdate = {
-  isFree: false, // ✅ devine plătit
-};
+    const setUpdate = {
+      featuredUntil,
+      featured: true,
+      isFree: false,
+    };
 
-// dacă e draft -> îl facem public
-if (existing.visibility === "draft") {
-  setUpdate.visibility = "public";
-  setUpdate.expiresAt = expiresAt;
-  if (!existing.status) setUpdate.status = "disponibil";
-}
+    if (existing.visibility === "draft") {
+      setUpdate.visibility = "public";
+      setUpdate.expiresAt = expiresAt;
+      if (!existing.status) setUpdate.status = "disponibil";
+    }
 
-// promovare (ca până acum)
-setUpdate.featuredUntil = featuredUntil;
-setUpdate.featured = true;
-
-const updated = await Listing.findByIdAndUpdate(
-  listingId,
-  { $set: setUpdate },
-  { new: true }
-).lean();
+    const updated = await Listing.findByIdAndUpdate(
+      listingId,
+      { $set: setUpdate },
+      { new: true }
+    ).lean();
 
     if (!updated) return res.status(404).json({ error: "Anunț inexistent" });
 
-    res.json({
+    return res.json({
       ok: true,
       listingId,
       plan,
       featuredUntil,
-      message: "Anunțul a fost promovat cu succes.",
+      message: existing.visibility === "draft"
+        ? "Plata confirmată. Draftul a fost publicat și promovat."
+        : "Plata confirmată. Anunțul a fost promovat.",
     });
   } catch (e) {
     console.error("stripe/confirm error:", e);
