@@ -54,12 +54,12 @@ router.get("/", async (req, res) => {
     }
 
     const and = [];
-and.push({
-  $or: [
-    { visibility: "public" },
-    { visibility: { $exists: false } }, // ✅ anunțurile vechi
-  ],
-});
+    and.push({
+      $or: [
+        { visibility: "public" },
+        { visibility: { $exists: false } }, // ✅ anunțurile vechi
+      ],
+    });
 
     if (category) and.push({ category });
     if (location) and.push({ location });
@@ -122,22 +122,22 @@ router.get("/:id", async (req, res) => {
     if (!listing) {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
-// ✅ LIMITĂ IMAGINI LA EDIT (FREE 10 / PAID 15)
-const maxImages = listing.isFree ? 10 : 15;
+    // ✅ LIMITĂ IMAGINI LA EDIT (FREE 10 / PAID 15)
+    const maxImages = listing.isFree ? 10 : 15;
 
-const existingImagesRaw = req.body.existingImages ?? [];
-const existingImages = Array.isArray(existingImagesRaw)
-  ? existingImagesRaw.filter(Boolean)
-  : [existingImagesRaw].filter(Boolean);
+    const existingImagesRaw = req.body.existingImages ?? [];
+    const existingImages = Array.isArray(existingImagesRaw)
+      ? existingImagesRaw.filter(Boolean)
+      : [existingImagesRaw].filter(Boolean);
 
-const uploadedCount = (req.files || []).length;
-const total = existingImages.length + uploadedCount;
+    const uploadedCount = (req.files || []).length;
+    const total = existingImages.length + uploadedCount;
 
-if (total > maxImages) {
-  return res.status(400).json({
-    error: `Maxim ${maxImages} imagini pentru acest tip de anunț.`,
-  });
-}
+    if (total > maxImages) {
+      return res.status(400).json({
+        error: `Maxim ${maxImages} imagini pentru acest tip de anunț.`,
+      });
+    }
 
     return res.json(listing);
   } catch (err) {
@@ -405,35 +405,75 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
       return res.status(403).json({ error: "Nu ai dreptul să modifici acest anunț." });
     }
 
-    const { title, description, price, category, location, phone, email, intent } = req.body;
+    const { title, description, price, category, location, phone, email, intent, type } = req.body;
+
+    // ✅ acceptăm ambele chei (frontend trimite "type", DB folosește "intent")
+    const finalIntent = (type ?? intent);
+
+    // ✅ VALIDARE obligatorie (pe valorile finale: ce vine din request sau ce există deja)
+    const t = String(title ?? listing.title ?? "").trim();
+    const c = String(category ?? listing.category ?? "").trim();
+    const loc = String(location ?? listing.location ?? "").trim();
+    const ph = normalizePhone(phone ?? listing.phone ?? "");
+    const it = String(finalIntent ?? listing.intent ?? "").trim();
+
+    if (!t || !c || !loc || !ph || !it) {
+      return res.status(400).json({
+        error:
+          "Completează obligatoriu: Titlu, Categorie, Tip (Vând/Cumpăr/Închiriez/Schimb), Localitate, Telefon.",
+      });
+    }
+
+    if (ph.length < 9) {
+      return res.status(400).json({ error: "Număr de telefon invalid." });
+    }
+
+    // ✅ LIMITĂ imagini la update (FREE 10 / PAID 15)
+    const maxImages = listing.isFree ? 10 : 15;
+
+    const existingImagesRaw = req.body.existingImages ?? [];
+    const existingImages = Array.isArray(existingImagesRaw)
+      ? existingImagesRaw.filter(Boolean)
+      : [existingImagesRaw].filter(Boolean);
+
+    const uploadedCount = (req.files || []).length;
+    const total = existingImages.length + uploadedCount;
+
+    if (total > maxImages) {
+      return res.status(400).json({
+        error: `Maxim ${maxImages} imagini pentru acest tip de anunț.`,
+      });
+    }
 
     if (title !== undefined) listing.title = title;
     if (description !== undefined) listing.description = description;
     if (price !== undefined) listing.price = Number(price);
     if (category !== undefined) listing.category = category;
     if (location !== undefined) listing.location = location;
-    if (phone !== undefined) listing.phone = normalizePhone(phone);
+    if (phone !== undefined) listing.phone = ph;
     if (email !== undefined) listing.email = email;
-    if (intent !== undefined) listing.intent = intent;
+    if (finalIntent !== undefined) listing.intent = finalIntent;
 
     // ✅ păstrăm imaginile existente trimise din frontend + adăugăm cele noi uploadate
-const existing = []
-  .concat(req.body.existingImages || [])
-  .filter(Boolean);
+    const existing = []
+      .concat(req.body.existingImages || [])
+      .filter(Boolean);
 
-// dacă vine ca string unic (când e doar una)
-const existingImages = Array.isArray(existing) ? existing : [existing];
+    // dacă vine ca string unic (când e doar una)
+    const existingImages2 = Array.isArray(existing) ? existing : [existing];
 
-// imagini noi din upload (Cloudinary)
-const uploadedImages = (req.files || []).map((file) => file.path || file.secure_url).filter(Boolean);
+    // imagini noi din upload (Cloudinary)
+    const uploadedImages = (req.files || [])
+      .map((file) => file.path || file.secure_url)
+      .filter(Boolean);
 
-// combinăm: întâi cele păstrate, apoi cele noi
-const combined = [...existingImages, ...uploadedImages];
+    // combinăm: întâi cele păstrate, apoi cele noi
+    const combined = [...existingImages2, ...uploadedImages];
 
-// dacă user nu a trimis nimic, nu stricăm imaginile
-if (combined.length > 0) {
-  listing.images = combined;
-}
+    // dacă user nu a trimis nimic, nu stricăm imaginile
+    if (combined.length > 0) {
+      listing.images = combined;
+    }
 
     await listing.save();
     res.json(listing);
