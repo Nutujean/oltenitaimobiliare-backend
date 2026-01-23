@@ -212,10 +212,13 @@ router.get("/confirm", async (req, res) => {
     const featuredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
     // ✅ dacă e draft, îl publicăm automat după plată
-    const existing = await Listing.findById(listingId).select("visibility status").lean();
+    const existing = await Listing.findById(listingId)
+      .select("visibility status expiresAt")
+      .lean();
     if (!existing) return res.status(404).json({ error: "Anunț inexistent" });
 
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    // (păstrăm exact logica ta pentru draft)
+    const expiresAtDraft = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     const setUpdate = {
       featuredUntil,
@@ -223,11 +226,33 @@ router.get("/confirm", async (req, res) => {
       isFree: false,
     };
 
+    // ✅ DRAFT → public + expirare + status (exact ca înainte)
     if (existing.visibility === "draft") {
       setUpdate.visibility = "public";
-      setUpdate.expiresAt = expiresAt;
+      setUpdate.expiresAt = expiresAtDraft;
       if (!existing.status) setUpdate.status = "disponibil";
     }
+
+    // ✅ FIX: dacă anunțul NU e draft, dar e expirat, îl reactivăm automat
+// astfel încât să fie activ cel puțin până la featuredUntil (7/14/30 zile)
+let reactivated = false;
+if (existing.visibility !== "draft") {
+  const now = new Date();
+  const isExpiredByDate = existing.expiresAt && new Date(existing.expiresAt) < now;
+  const isExpiredByStatus = String(existing.status || "").toLowerCase() === "expirat";
+
+  if (isExpiredByDate || isExpiredByStatus) {
+    setUpdate.status = "disponibil";
+
+    const currentExpires = existing.expiresAt ? new Date(existing.expiresAt) : null;
+    // expirarea devine minim featuredUntil (adică exact cât a plătit să fie vizibil)
+    setUpdate.expiresAt = currentExpires && currentExpires > featuredUntil
+      ? currentExpires
+      : featuredUntil;
+
+    reactivated = true;
+  }
+}
 
     const updated = await Listing.findByIdAndUpdate(
       listingId,
@@ -237,14 +262,21 @@ router.get("/confirm", async (req, res) => {
 
     if (!updated) return res.status(404).json({ error: "Anunț inexistent" });
 
+    // ✅ UX: mesaj clar pentru user
+    let message = "Plata confirmată. Anunțul a fost promovat.";
+    if (existing.visibility === "draft") {
+      message = "Plata confirmată. Draftul a fost publicat și promovat.";
+    } else if (reactivated) {
+  message =
+    `Plata confirmată. Anunțul era expirat — a fost reactivat și promovat (activ până la ${new Date(setUpdate.expiresAt).toLocaleDateString("ro-RO")}).`;
+}
+
     return res.json({
       ok: true,
       listingId,
       plan,
       featuredUntil,
-      message: existing.visibility === "draft"
-        ? "Plata confirmată. Draftul a fost publicat și promovat."
-        : "Plata confirmată. Anunțul a fost promovat.",
+      message,
     });
   } catch (e) {
     console.error("stripe/confirm error:", e);
