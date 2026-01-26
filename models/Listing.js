@@ -93,7 +93,7 @@ const ListingSchema = new Schema(
     // FREE expiră la 15 zile
     expiresAt: {
       type: Date,
-      default: () => new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
+      default: () => new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
     },
   },
   { timestamps: true }
