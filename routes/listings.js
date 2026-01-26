@@ -34,6 +34,7 @@ router.get("/", async (req, res) => {
     const location = (req.query.location || "").trim();
     const intent = (req.query.intent || "").trim();
     const q = (req.query.q || "").trim();
+    const section = (req.query.section || "").trim();
 
     // 🔥 sortare: ACTIVE + PROMOVATE primele
 let sortQuery = {
@@ -60,6 +61,14 @@ let sortQuery = {
         { visibility: { $exists: false } }, // ✅ anunțurile vechi
       ],
     });
+    // ✅ separare: implicit arătăm DOAR imobiliare (și cele vechi fără section)
+   if (section) {
+     and.push({ section }); // ex: section=angajari
+   } else {
+     and.push({
+     $or: [{ section: "imobiliare" }, { section: { $exists: false } }],
+    });
+   }
 
     if (category) and.push({ category });
     if (location) and.push({ location });
