@@ -19,6 +19,15 @@ const ListingSchema = new Schema(
     location: { type: String, trim: true },
 
     // =========================
+    // SECȚIUNE (imobiliare / angajări)
+    // =========================
+    section: {
+    type: String,
+    enum: ["imobiliare", "angajari"],
+    default: "imobiliare",
+  },
+
+    // =========================
     // IMAGINI
     // =========================
     images: { type: [String], default: [] },
@@ -109,5 +118,6 @@ ListingSchema.index({ dealType: 1 });
 ListingSchema.index({ intent: 1 });
 ListingSchema.index({ expiresAt: 1 });
 ListingSchema.index({ visibility: 1 });
+ListingSchema.index({ section: 1 });
 
 export default mongoose.model("Listing", ListingSchema);
