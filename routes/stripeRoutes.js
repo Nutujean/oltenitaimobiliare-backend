@@ -1,3 +1,4 @@
+// routes/stripeRoutes.js
 import express from "express";
 import Stripe from "stripe";
 import mongoose from "mongoose";
@@ -47,7 +48,9 @@ router.get("/debug", (_req, res) =>
 router.post("/create-checkout-session", async (req, res) => {
   try {
     if (!stripe)
-      return res.status(500).json({ error: "Stripe cheie lipsă (STRIPE_SECRET_KEY)" });
+      return res
+        .status(500)
+        .json({ error: "Stripe cheie lipsă (STRIPE_SECRET_KEY)" });
 
     const { listingId, plan = "featured7" } = req.body || {};
     if (!listingId) return res.status(400).json({ error: "Lipsește listingId" });
@@ -96,6 +99,11 @@ router.post("/create-checkout-session", async (req, res) => {
 ======================================================= */
 router.post("/create-checkout-session/:listingId", async (req, res) => {
   try {
+    if (!stripe)
+      return res
+        .status(500)
+        .json({ error: "Stripe cheie lipsă (STRIPE_SECRET_KEY)" });
+
     const { listingId } = req.params;
     const { plan = "featured7" } = req.body || {};
     if (!listingId) return res.status(400).json({ error: "Lipsește listingId" });
@@ -141,12 +149,13 @@ router.post("/create-checkout-session/:listingId", async (req, res) => {
 
 /* =======================================================
    ✅ Confirmare plată (manuală, fără webhook)
-   - acceptă: cs_... (Checkout Session) / pi_... (PaymentIntent) / ch_... (Charge)
 ======================================================= */
 router.get("/confirm", async (req, res) => {
   try {
     if (!stripe)
-      return res.status(500).json({ error: "Stripe cheie lipsă (STRIPE_SECRET_KEY)" });
+      return res
+        .status(500)
+        .json({ error: "Stripe cheie lipsă (STRIPE_SECRET_KEY)" });
 
     let { session_id } = req.query;
     if (!session_id) return res.status(400).json({ error: "Lipsește session_id" });
@@ -155,7 +164,7 @@ router.get("/confirm", async (req, res) => {
     let plan = "featured7";
     let paymentStatus = null;
 
-    // 1) Dacă e Checkout Session (cs_) - flow-ul tău existent
+    // 1) Checkout Session (cs_)
     if (String(session_id).startsWith("cs_")) {
       const session = await stripe.checkout.sessions.retrieve(session_id);
 
@@ -167,26 +176,25 @@ router.get("/confirm", async (req, res) => {
       plan = session.metadata?.plan || "featured7";
     }
 
-    // 2) Dacă e PaymentIntent (pi_) - confirm direct din PaymentIntent
+    // 2) PaymentIntent (pi_)
     if (String(session_id).startsWith("pi_")) {
       const pi = await stripe.paymentIntents.retrieve(session_id);
 
-      paymentStatus = pi.status; // "succeeded" / etc.
+      paymentStatus = pi.status;
       if (paymentStatus !== "succeeded") {
         return res.status(400).json({ error: "Plata nu este confirmată încă." });
       }
 
-      // dacă metadata există, o folosim
       listingId = pi.metadata?.listingId || null;
       plan = pi.metadata?.plan || "featured7";
     }
 
-    // 3) Dacă e Charge (ch_) - luăm payment_intent din charge
+    // 3) Charge (ch_)
     if (String(session_id).startsWith("ch_")) {
       const ch = await stripe.charges.retrieve(session_id);
 
-      // charge paid?
-      if (!ch.paid) return res.status(400).json({ error: "Plata nu este confirmată încă." });
+      if (!ch.paid)
+        return res.status(400).json({ error: "Plata nu este confirmată încă." });
 
       const piId = ch.payment_intent;
       if (piId && String(piId).startsWith("pi_")) {
@@ -206,6 +214,7 @@ router.get("/confirm", async (req, res) => {
       });
     }
 
+    // ✅ durata
     let days = 7;
     if (plan === "featured14") days = 14;
     if (plan === "featured30") days = 30;
@@ -213,48 +222,66 @@ router.get("/confirm", async (req, res) => {
 
     const featuredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
-    // ✅ dacă e draft, îl publicăm automat după plată
+    // ✅ citim anunțul curent (INCLUDE section/category ca să nu stricăm)
     const existing = await Listing.findById(listingId)
-      .select("visibility status expiresAt")
+      .select("visibility status expiresAt section category")
       .lean();
     if (!existing) return res.status(404).json({ error: "Anunț inexistent" });
 
-    // (păstrăm exact logica ta pentru draft)
-    const expiresAtDraft = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
+    // ✅ setări de bază
     const setUpdate = {
       featuredUntil,
       featured: true,
       isFree: false,
     };
 
-    // ✅ DRAFT → public + expirare + status (exact ca înainte)
+    // ✅ IMPORTANT: separăm clar job vs imobiliare (NU se amestecă)
+    const isJob = plan === "job30" || existing.section === "angajari";
+    if (isJob) {
+      setUpdate.section = "angajari";
+      // opțional, ca să fie consistent
+      if (!existing.category || existing.category === "Angajări") {
+        setUpdate.category = "Angajări";
+      }
+    } else {
+      // pentru promovări normale, anunțul rămâne imobiliare
+      setUpdate.section = existing.section || "imobiliare";
+    }
+
+    // ✅ dacă e draft, îl publicăm automat după plată
     if (existing.visibility === "draft") {
       setUpdate.visibility = "public";
-      setUpdate.expiresAt = expiresAtDraft;
+
+      // expirare: minim featuredUntil, dar pentru draft setăm 30 zile (clasic),
+      // iar dacă featuredUntil e mai mare (nu e cazul), îl respectăm.
+      const expiresAtDraft = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      setUpdate.expiresAt =
+        expiresAtDraft > featuredUntil ? expiresAtDraft : featuredUntil;
+
       if (!existing.status) setUpdate.status = "disponibil";
     }
 
-    // ✅ FIX: dacă anunțul NU e draft, dar e expirat, îl reactivăm automat
-// astfel încât să fie activ cel puțin până la featuredUntil (7/14/30 zile)
-let reactivated = false;
-if (existing.visibility !== "draft") {
-  const now = new Date();
-  const isExpiredByDate = existing.expiresAt && new Date(existing.expiresAt) < now;
-  const isExpiredByStatus = String(existing.status || "").toLowerCase() === "expirat";
+    // ✅ dacă NU e draft, dar e expirat, îl reactivăm automat
+    let reactivated = false;
+    if (existing.visibility !== "draft") {
+      const now = new Date();
+      const isExpiredByDate =
+        existing.expiresAt && new Date(existing.expiresAt) < now;
+      const isExpiredByStatus =
+        String(existing.status || "").toLowerCase() === "expirat";
 
-  if (isExpiredByDate || isExpiredByStatus) {
-    setUpdate.status = "disponibil";
+      if (isExpiredByDate || isExpiredByStatus) {
+        setUpdate.status = "disponibil";
 
-    const currentExpires = existing.expiresAt ? new Date(existing.expiresAt) : null;
-    // expirarea devine minim featuredUntil (adică exact cât a plătit să fie vizibil)
-    setUpdate.expiresAt = currentExpires && currentExpires > featuredUntil
-      ? currentExpires
-      : featuredUntil;
+        const currentExpires = existing.expiresAt ? new Date(existing.expiresAt) : null;
+        setUpdate.expiresAt =
+          currentExpires && currentExpires > featuredUntil
+            ? currentExpires
+            : featuredUntil;
 
-    reactivated = true;
-  }
-}
+        reactivated = true;
+      }
+    }
 
     const updated = await Listing.findByIdAndUpdate(
       listingId,
@@ -264,14 +291,15 @@ if (existing.visibility !== "draft") {
 
     if (!updated) return res.status(404).json({ error: "Anunț inexistent" });
 
-    // ✅ UX: mesaj clar pentru user
     let message = "Plata confirmată. Anunțul a fost promovat.";
     if (existing.visibility === "draft") {
       message = "Plata confirmată. Draftul a fost publicat și promovat.";
     } else if (reactivated) {
-  message =
-    `Plata confirmată. Anunțul era expirat — a fost reactivat și promovat (activ până la ${new Date(setUpdate.expiresAt).toLocaleDateString("ro-RO")}).`;
-}
+      message =
+        `Plata confirmată. Anunțul era expirat — a fost reactivat și promovat (activ până la ${new Date(
+          setUpdate.expiresAt
+        ).toLocaleDateString("ro-RO")}).`;
+    }
 
     return res.json({
       ok: true,
