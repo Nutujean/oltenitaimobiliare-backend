@@ -37,12 +37,12 @@ router.get("/", async (req, res) => {
     const section = (req.query.section || "").trim();
 
     // 🔥 sortare: ACTIVE + PROMOVATE primele
-let sortQuery = {
-  status: 1,
-  featured: -1,
-  updatedAt: -1,   // ✅ urcă sus când se publică după plată
-  createdAt: -1,
-};
+    let sortQuery = {
+      status: 1,
+      featured: -1,
+      updatedAt: -1, // ✅ urcă sus când se publică după plată
+      createdAt: -1,
+    };
 
     if (sortParam === "cheapest") {
       sortQuery = { status: 1, featured: -1, price: 1, createdAt: -1 };
@@ -61,14 +61,15 @@ let sortQuery = {
         { visibility: { $exists: false } }, // ✅ anunțurile vechi
       ],
     });
+
     // ✅ separare: implicit arătăm DOAR imobiliare (și cele vechi fără section)
-   if (section) {
-     and.push({ section }); // ex: section=angajari
-   } else {
-     and.push({
-     $or: [{ section: "imobiliare" }, { section: { $exists: false } }],
-    });
-   }
+    if (section) {
+      and.push({ section }); // ex: section=angajari
+    } else {
+      and.push({
+        $or: [{ section: "imobiliare" }, { section: { $exists: false } }],
+      });
+    }
 
     if (category) and.push({ category });
     if (location) and.push({ location });
@@ -85,7 +86,6 @@ let sortQuery = {
     }
 
     const filter = and.length ? { $and: and } : {};
-
     const listings = await Listing.find(filter).sort(sortQuery).lean().exec();
     res.json(listings);
   } catch (err) {
@@ -116,8 +116,6 @@ router.get("/mine", protect, async (req, res) => {
 
 /* =======================================================
    🟦 GET un singur anunț după ID (public)
-   - (drafturile sunt accesibile doar dacă știi ID-ul,
-     dar nu apar în listarea publică; asta e ok)
 ======================================================= */
 router.get("/:id", async (req, res) => {
   try {
@@ -130,22 +128,6 @@ router.get("/:id", async (req, res) => {
     const listing = await Listing.findById(id).lean().exec();
     if (!listing) {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
-    }
-    // ✅ LIMITĂ IMAGINI LA EDIT (FREE 10 / PAID 15)
-    const maxImages = listing.isFree ? 10 : 15;
-
-    const existingImagesRaw = req.body.existingImages ?? [];
-    const existingImages = Array.isArray(existingImagesRaw)
-      ? existingImagesRaw.filter(Boolean)
-      : [existingImagesRaw].filter(Boolean);
-
-    const uploadedCount = (req.files || []).length;
-    const total = existingImages.length + uploadedCount;
-
-    if (total > maxImages) {
-      return res.status(400).json({
-        error: `Maxim ${maxImages} imagini pentru acest tip de anunț.`,
-      });
     }
 
     return res.json(listing);
@@ -162,12 +144,33 @@ router.get("/:id", async (req, res) => {
    - primește FormData cu "images"
    - FREE: 1 anunț gratuit activ / cont + cooldown după expirare
    - PAID (isFree=false): 🔒 blocat până legăm plata (402)
-   - expirare: ✅ 15 zile
+   - ❗️ANGAJARI: NU se publică aici (doar draft+plată)
 ======================================================= */
 router.post("/", protect, upload.array("images", 15), async (req, res) => {
   try {
-    const { title, description, price, category, location, phone, email, intent, isFree } =
-      req.body;
+    const {
+      title,
+      description,
+      price,
+      category,
+      location,
+      phone,
+      email,
+      intent,
+      isFree,
+      section,
+    } = req.body;
+
+    const finalSection = String(section || "imobiliare").trim();
+
+    // 🔒 Joburile NU se publică direct pe /api/listings
+    if (finalSection === "angajari") {
+      return res.status(402).json({
+        error:
+          "Anunțurile de angajări se publică doar după plată (din pagina Angajări).",
+        mustPay: true,
+      });
+    }
 
     if (!title || !description || !price || !category || !location || !phone) {
       return res
@@ -188,7 +191,6 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
     const isFreeListing = String(isFree ?? "true") === "true";
 
     // 🔒 IMPORTANT: nu permitem creare PAID fără plată confirmată
-    // (temporar: până legăm flow-ul Stripe pentru "anunț nou promovat")
     if (!isFreeListing) {
       return res.status(402).json({
         error: "Pentru a publica un anunț Promovat trebuie să finalizezi plata.",
@@ -210,14 +212,15 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
       return res.status(401).json({ error: "Utilizator inexistent." });
     }
 
-    // ✅ Limitare + cooldown DOAR pentru anunțuri GRATUITE
+    // ✅ Limitare + cooldown DOAR pentru anunțuri GRATUITE IMOBILIARE
     if (isFreeListing) {
-      // ✅ 1 anunț gratuit ACTIV / cont
+      // ✅ 1 anunț gratuit ACTIV / cont (DOAR imobiliare + vechi fără section)
       const activeFree = await Listing.findOne({
         user: req.user._id,
         isFree: true,
         expiresAt: { $gt: new Date() },
         visibility: "public",
+        $or: [{ section: "imobiliare" }, { section: { $exists: false } }],
       }).lean();
 
       if (activeFree) {
@@ -232,8 +235,11 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
         });
       }
 
-      // ✅ cooldown după expirare
-      if (dbUser.freeCooldownUntil && new Date(dbUser.freeCooldownUntil) > new Date()) {
+      // ✅ cooldown după expirare (tot pentru imobiliare)
+      if (
+        dbUser.freeCooldownUntil &&
+        new Date(dbUser.freeCooldownUntil) > new Date()
+      ) {
         const msLeft = new Date(dbUser.freeCooldownUntil) - new Date();
         const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
         return res.status(400).json({
@@ -260,13 +266,14 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
       price: numericPrice,
       category,
       location,
+      section: "imobiliare", // ✅ FIX
       phone: normalizedPhone,
       email,
       intent,
       images: imageUrls,
 
-      visibility: "public", // ✅ public
-      isFree: isFreeListing, // ✅ FREE/PAID din request
+      visibility: "public",
+      isFree: isFreeListing,
       featured: false,
       featuredUntil: null,
       expiresAt,
@@ -277,7 +284,8 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
     // ✅ dacă e FREE, setăm cooldown = expiresAt + COOLDOWN_DAYS
     if (isFreeListing) {
       dbUser.freeCooldownUntil = new Date(
-        new Date(expiresAt).getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000
+        new Date(expiresAt).getTime() +
+          COOLDOWN_DAYS * 24 * 60 * 60 * 1000
       );
       await dbUser.save();
     }
@@ -332,15 +340,25 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
 
 /* =======================================================
    🟨 POST salvare DRAFT (autentificat)
-   - salvează anunțul în cont, dar NU îl afișează public
-   - pentru anunțuri 2/3/4... care urmează să fie plătite
 ======================================================= */
 router.post("/draft", protect, upload.array("images", 15), async (req, res) => {
   try {
-    const { title, description, price, category, location, phone, email, intent, section } = req.body;
+    const {
+      title,
+      description,
+      price,
+      category,
+      location,
+      phone,
+      email,
+      intent,
+      section,
+    } = req.body;
 
     if (!title || !description || !price || !category || !location || !phone) {
-      return res.status(400).json({ error: "Completează toate câmpurile obligatorii." });
+      return res
+        .status(400)
+        .json({ error: "Completează toate câmpurile obligatorii." });
     }
 
     const numericPrice = Number(price);
@@ -373,9 +391,9 @@ router.post("/draft", protect, upload.array("images", 15), async (req, res) => {
       intent,
       images: imageUrls,
 
-      visibility: "draft", // ✅ nu apare public
-      isFree: false,       // ✅ destinat plății
-      expiresAt: null,     // ✅ nu expiră ca draft
+      visibility: "draft",
+      isFree: false,
+      expiresAt: null,
 
       featured: false,
       featuredUntil: null,
@@ -415,12 +433,11 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
       return res.status(403).json({ error: "Nu ai dreptul să modifici acest anunț." });
     }
 
-    const { title, description, price, category, location, phone, email, intent, type } = req.body;
+    const { title, description, price, category, location, phone, email, intent, type } =
+      req.body;
 
-    // ✅ acceptăm ambele chei (frontend trimite "type", DB folosește "intent")
-    const finalIntent = (type ?? intent);
+    const finalIntent = type ?? intent;
 
-    // ✅ VALIDARE obligatorie (pe valorile finale: ce vine din request sau ce există deja)
     const t = String(title ?? listing.title ?? "").trim();
     const c = String(category ?? listing.category ?? "").trim();
     const loc = String(location ?? listing.location ?? "").trim();
@@ -438,7 +455,6 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
       return res.status(400).json({ error: "Număr de telefon invalid." });
     }
 
-    // ✅ LIMITĂ imagini la update (FREE 10 / PAID 15)
     const maxImages = listing.isFree ? 10 : 15;
 
     const existingImagesRaw = req.body.existingImages ?? [];
@@ -464,23 +480,14 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
     if (email !== undefined) listing.email = email;
     if (finalIntent !== undefined) listing.intent = finalIntent;
 
-    // ✅ păstrăm imaginile existente trimise din frontend + adăugăm cele noi uploadate
-    const existing = []
-      .concat(req.body.existingImages || [])
-      .filter(Boolean);
-
-    // dacă vine ca string unic (când e doar una)
+    const existing = [].concat(req.body.existingImages || []).filter(Boolean);
     const existingImages2 = Array.isArray(existing) ? existing : [existing];
 
-    // imagini noi din upload (Cloudinary)
     const uploadedImages = (req.files || [])
       .map((file) => file.path || file.secure_url)
       .filter(Boolean);
 
-    // combinăm: întâi cele păstrate, apoi cele noi
     const combined = [...existingImages2, ...uploadedImages];
-
-    // dacă user nu a trimis nimic, nu stricăm imaginile
     if (combined.length > 0) {
       listing.images = combined;
     }
@@ -492,6 +499,7 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
     res.status(500).json({ error: "Eroare server la actualizarea anunțului." });
   }
 });
+
 /* =======================================================
    🟩 PUT publicare DRAFT după plată (manual)
 ======================================================= */
@@ -508,12 +516,10 @@ router.put("/:id/publish", protect, async (req, res) => {
       return res.status(404).json({ error: "Anunțul nu a fost găsit." });
     }
 
-    // ✅ doar owner
     if (listing.user && listing.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ error: "Nu ai dreptul să publici acest anunț." });
     }
 
-    // ✅ trebuie să fie draft
     if (listing.visibility !== "draft") {
       return res.status(400).json({ error: "Acest anunț nu este draft." });
     }
@@ -525,6 +531,9 @@ router.put("/:id/publish", protect, async (req, res) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
     listing.expiresAt = expiresAt;
+
+    // ✅ dacă e job, îl lăsăm job; dacă nu, îl setăm imobiliare
+    if (!listing.section) listing.section = "imobiliare";
 
     if (!listing.status) listing.status = "disponibil";
 
