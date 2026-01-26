@@ -337,7 +337,7 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
 ======================================================= */
 router.post("/draft", protect, upload.array("images", 15), async (req, res) => {
   try {
-    const { title, description, price, category, location, phone, email, intent } = req.body;
+    const { title, description, price, category, location, phone, email, intent, section } = req.body;
 
     if (!title || !description || !price || !category || !location || !phone) {
       return res.status(400).json({ error: "Completează toate câmpurile obligatorii." });
@@ -367,6 +367,7 @@ router.post("/draft", protect, upload.array("images", 15), async (req, res) => {
       price: numericPrice,
       category,
       location,
+      section: section === "angajari" ? "angajari" : "imobiliare",
       phone: normalizedPhone,
       email,
       intent,
