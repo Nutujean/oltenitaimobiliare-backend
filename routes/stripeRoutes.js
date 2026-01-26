@@ -22,6 +22,7 @@ const PLANS = {
   featured7: { label: "Promovare anunț – 7 zile", amountRON: 30 },
   featured14: { label: "Promovare anunț – 14 zile", amountRON: 50 },
   featured30: { label: "Promovare anunț – 30 zile", amountRON: 80 },
+  job30: { label: "Angajare – 30 zile (promovat)", amountRON: 49 },
 };
 
 // 🔹 Helper pentru extragerea ID-ului din slug
