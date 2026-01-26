@@ -209,6 +209,7 @@ router.get("/confirm", async (req, res) => {
     let days = 7;
     if (plan === "featured14") days = 14;
     if (plan === "featured30") days = 30;
+    if (plan === "job30") days = 30;
 
     const featuredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
