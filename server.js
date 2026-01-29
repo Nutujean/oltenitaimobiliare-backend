@@ -190,10 +190,12 @@ cron.schedule("0 3 * * *", async () => {
       { $set: { status: "expirat" } }
     );
 
-    // 🔸 2. ȘTERGE DUPĂ 30 ZILE (doar dacă NU e promovat activ)
-    const DELETE_BEFORE = new Date(
-      Date.now() - 30 * 24 * 60 * 60 * 1000
-    );
+    const deleted = await Listing.deleteMany({
+status: "expirat",
+// ștergem doar expiratele vechi de 60 zile (după data de expirare)
+expiresAt: { $lt: DELETE_EXPIRED_BEFORE },
+$or: [{ featuredUntil: null }, { featuredUntil: { $lt: now } }],
+});
 
     const deleted = await Listing.deleteMany({
       createdAt: { $lt: DELETE_BEFORE },
