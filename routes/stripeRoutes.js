@@ -224,7 +224,7 @@ router.get("/confirm", async (req, res) => {
 
     // ✅ citim anunțul curent (INCLUDE section/category ca să nu stricăm)
     const existing = await Listing.findById(listingId)
-      .select("visibility status expiresAt section category")
+      .select("visibility status expiresAt section category title price location phone")
       .lean();
     if (!existing) return res.status(404).json({ error: "Anunț inexistent" });
 
@@ -301,6 +301,20 @@ router.get("/confirm", async (req, res) => {
         ).toLocaleDateString("ro-RO")}).`;
     }
 
+    // ✅ EMAIL ADMIN la confirmarea plății (nu stricăm dacă lipsește config)
+    try {
+      await notifyAdminPaidAction({
+        listingId,
+        plan,
+        message,
+        existing,
+        updated,
+        featuredUntil,
+      });
+    } catch (e) {
+      console.error("Email notify failed:", e?.message || e);
+    }
+
     return res.json({
       ok: true,
       listingId,
@@ -315,3 +329,81 @@ router.get("/confirm", async (req, res) => {
 });
 
 export default router;
+
+/* =======================================================
+   ✅ Helper: trimite email (best-effort)
+   - Nu oprește ruta dacă nu există nodemailer/config.
+======================================================= */
+async function notifyAdminPaidAction({ listingId, plan, message, existing, updated, featuredUntil }) {
+  // 1) încercăm nodemailer doar dacă există (dinamic, ca să nu crape dacă nu e instalat)
+  let nodemailer;
+  try {
+    const mod = await import("nodemailer");
+    nodemailer = mod.default || mod;
+  } catch (_e) {
+    // dacă nu ai nodemailer în proiect, nu stricăm nimic
+    return;
+  }
+
+  // 2) configurare flexibilă (ia ce ai în .env)
+  const SMTP_HOST = process.env.SMTP_HOST || process.env.EMAIL_HOST || "";
+  const SMTP_PORT = Number(process.env.SMTP_PORT || process.env.EMAIL_PORT || 587);
+  const SMTP_USER =
+    process.env.SMTP_USER || process.env.EMAIL_USER || process.env.GMAIL_USER || "";
+  const SMTP_PASS =
+    process.env.SMTP_PASS || process.env.EMAIL_PASS || process.env.GMAIL_PASS || "";
+
+  const ADMIN_TO =
+    process.env.ADMIN_EMAIL ||
+    process.env.CONTACT_TO ||
+    process.env.MAIL_TO ||
+    process.env.EMAIL_TO ||
+    ""; // pune ADMIN_EMAIL în .env ca să fie sigur
+
+  if (!SMTP_USER || !SMTP_PASS || !ADMIN_TO) {
+    // nu avem config complet -> nu trimitem, dar nici nu stricăm
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST || undefined,
+    port: SMTP_HOST ? SMTP_PORT : undefined,
+    secure: SMTP_HOST ? SMTP_PORT === 465 : false,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+    // dacă e Gmail și nu ai host, nodemailer se descurcă pe service dacă vrei:
+    ...(SMTP_HOST ? {} : { service: "gmail" }),
+  });
+
+  const title = updated?.title || existing?.title || "(fără titlu)";
+  const price = updated?.price ?? existing?.price ?? "";
+  const location = updated?.location || existing?.location || "";
+  const phone = updated?.phone || existing?.phone || "";
+  const link = `https://oltenitaimobiliare.ro/anunt/${listingId}`;
+
+  const planLabel = PLANS?.[plan]?.label || plan;
+
+  const subject = `✅ Plată confirmată (${planLabel}) — ${String(title).slice(0, 60)}`;
+
+  const text = [
+    "Plată confirmată (Stripe).",
+    "",
+    `Mesaj: ${message}`,
+    `Plan: ${planLabel}`,
+    `Listing ID: ${listingId}`,
+    `Titlu: ${title}`,
+    price !== "" ? `Preț: ${price}` : null,
+    location ? `Locație: ${location}` : null,
+    phone ? `Telefon: ${phone}` : null,
+    featuredUntil ? `Promovat până la: ${new Date(featuredUntil).toLocaleString("ro-RO")}` : null,
+    `Link: ${link}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  await transporter.sendMail({
+    from: SMTP_USER,
+    to: ADMIN_TO,
+    subject,
+    text,
+  });
+}
