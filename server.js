@@ -167,42 +167,36 @@ app.use((req, res) => {
   res.status(404).send("Not found");
 });
 
+// ✅ backend/server.js
+// Înlocuiește COMPLET tot blocul de CRON (de la `cron.schedule(` până la `});`) cu acesta:
+
 /* =======================================================
    🕒 CRON — EXPIRARE & ȘTERGERE ANUNȚURI
-   - expiră după 15 zile
-   - șterge după 30 zile
+   - expiră după expiresAt (FREE=15 zile / PAID=30 zile setate în routes)
+   - șterge expiratele la 60 zile DUPĂ expirare
    - promovatele active NU sunt afectate
 ======================================================= */
 cron.schedule("0 3 * * *", async () => {
   try {
     const now = new Date();
 
-    // 🔸 1. EXPIRĂ DUPĂ 15 ZILE (doar dacă NU e promovat activ)
+    // 1) EXPIRĂ (doar dacă NU e promovat activ)
     const expired = await Listing.updateMany(
       {
         status: "disponibil",
         expiresAt: { $lt: now },
-        $or: [
-          { featuredUntil: null },
-          { featuredUntil: { $lt: now } },
-        ],
+        $or: [{ featuredUntil: null }, { featuredUntil: { $lt: now } }],
       },
       { $set: { status: "expirat" } }
     );
 
-    const deleted = await Listing.deleteMany({
-status: "expirat",
-// ștergem doar expiratele vechi de 60 zile (după data de expirare)
-expiresAt: { $lt: DELETE_EXPIRED_BEFORE },
-$or: [{ featuredUntil: null }, { featuredUntil: { $lt: now } }],
-});
+    // 2) ȘTERGE DOAR EXPIRATELE vechi de 60 zile de la expiresAt
+    const deleteExpiredBefore = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
 
     const deleted = await Listing.deleteMany({
-      createdAt: { $lt: DELETE_BEFORE },
-      $or: [
-        { featuredUntil: null },
-        { featuredUntil: { $lt: now } },
-      ],
+      status: "expirat",
+      expiresAt: { $lt: deleteExpiredBefore },
+      $or: [{ featuredUntil: null }, { featuredUntil: { $lt: now } }],
     });
 
     if (expired.modifiedCount || deleted.deletedCount) {
