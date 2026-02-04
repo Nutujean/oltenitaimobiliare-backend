@@ -1,19 +1,12 @@
-// =======================================================
-// SHARE SERVER - Oltenita Imobiliare (OG for Facebook)
-// =======================================================
 import express from "express";
 
 const app = express();
 
-// API care conține listing-urile (merge sigur)
 const API = "https://api.oltenitaimobiliare.ro/api";
 const PUBLIC = "https://oltenitaimobiliare.ro";
 const FALLBACK_IMG = "https://oltenitaimobiliare.ro/preview.jpg";
 
-// Timeout scurt ca Facebook să nu primească timeout / bad response
 const API_TIMEOUT_MS = 2000;
-
-// Cache ca FB să nu lovească serverul continuu (poți mări la 3600 după ce e stabil)
 const CACHE_SECONDS = 300;
 
 function esc(s = "") {
@@ -25,13 +18,15 @@ function esc(s = "") {
     .replace(/'/g, "&#39;");
 }
 
-function ogPage({ id, title, description, image, price }) {
+function setHtmlHeaders(res) {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", `public, max-age=${CACHE_SECONDS}`);
+}
+
+function ogPage({ id, title, description, image, price, shareUrl, publicUrl }) {
   const t = esc((title || "Oltenita Imobiliare").slice(0, 80));
   const d = esc((description || "Vezi detaliile anunțului.").slice(0, 160));
   const img = image || FALLBACK_IMG;
-
-  const shareUrl = `https://share.oltenitaimobiliare.ro/share/${id}`;
-  const publicUrl = `${PUBLIC}/anunt/${id}`;
 
   return `<!doctype html>
 <html lang="ro">
@@ -44,7 +39,9 @@ function ogPage({ id, title, description, image, price }) {
   <meta property="og:site_name" content="Oltenita Imobiliare" />
   <meta property="og:locale" content="ro_RO" />
 
+  <!-- IMPORTANT: exact URL-ul cerut (cu ?v=..., dacă există) -->
   <meta property="og:url" content="${shareUrl}" />
+
   <meta property="og:title" content="${t}" />
   <meta property="og:description" content="${d}" />
   <meta property="og:image" content="${img}" />
@@ -56,9 +53,10 @@ function ogPage({ id, title, description, image, price }) {
   <meta name="twitter:description" content="${d}" />
   <meta name="twitter:image" content="${img}" />
 
-  <link rel="canonical" href="${publicUrl}" />
+  <!-- canonical tot pe shareUrl (nu pe SPA) ca să nu deruteze Debugger -->
+  <link rel="canonical" href="${shareUrl}" />
 
-  <!-- IMPORTANT: FB ia OG din HEAD, apoi userul e trimis la anunț -->
+  <!-- User redirect -->
   <meta http-equiv="refresh" content="0;url=${publicUrl}" />
 </head>
 <body>
@@ -69,16 +67,14 @@ function ogPage({ id, title, description, image, price }) {
 </html>`;
 }
 
-function setHtmlHeaders(res) {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.setHeader("Cache-Control", `public, max-age=${CACHE_SECONDS}`);
-}
-
-// ✅ Ruta principală de share (OG)
+// Ruta principală
 app.get("/share/:id", async (req, res) => {
   const { id } = req.params;
 
-  // fallback imediat (200) — niciodată 404/500 către Facebook
+  // shareUrl exact cum a fost cerut (inclusiv query)
+  const shareUrl = `https://share.oltenitaimobiliare.ro${req.originalUrl}`;
+  const publicUrl = `${PUBLIC}/anunt/${id}`;
+
   const sendFallback = () => {
     setHtmlHeaders(res);
     return res.status(200).send(
@@ -87,6 +83,8 @@ app.get("/share/:id", async (req, res) => {
         title: "Oltenita Imobiliare",
         description: "Vezi anunțurile imobiliare din Oltenița și împrejurimi.",
         image: FALLBACK_IMG,
+        shareUrl,
+        publicUrl,
       })
     );
   };
@@ -102,10 +100,7 @@ app.get("/share/:id", async (req, res) => {
 
     clearTimeout(timer);
 
-    if (!apiRes.ok) {
-      // ⚠️ NU 404 către Facebook
-      return sendFallback();
-    }
+    if (!apiRes.ok) return sendFallback();
 
     const listing = await apiRes.json();
 
@@ -114,7 +109,6 @@ app.get("/share/:id", async (req, res) => {
       listing?.imageUrl ||
       "";
 
-    // asigurăm https
     const image =
       typeof imageCandidate === "string" && imageCandidate.startsWith("https://")
         ? imageCandidate
@@ -126,23 +120,19 @@ app.get("/share/:id", async (req, res) => {
       description: listing?.description || "",
       image,
       price: listing?.price,
+      shareUrl,
+      publicUrl,
     });
 
     setHtmlHeaders(res);
     return res.status(200).send(html);
   } catch (e) {
-    // orice eroare => tot 200 fallback (ca să nu mai apară "Bad Response Code")
     console.error("Eroare SHARE:", e?.message || e);
     return sendFallback();
   }
 });
 
-// ✅ Root (să nu mai vezi Cannot GET /)
-app.get("/", (_req, res) => {
-  res.status(200).send("OK - share service");
-});
-
-// ✅ Healthcheck
+app.get("/", (_req, res) => res.status(200).send("OK - share service"));
 app.get("/health", (_req, res) =>
   res.json({ ok: true, service: "share", time: new Date().toISOString() })
 );
