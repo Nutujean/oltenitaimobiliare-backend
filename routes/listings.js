@@ -86,8 +86,17 @@ router.get("/", async (req, res) => {
     }
 
     const filter = and.length ? { $and: and } : {};
-    const listings = await Listing.find(filter).sort(sortQuery).lean().exec();
-    res.json(listings);
+    const now = new Date();
+
+// ✅ curățăm promovările expirate
+await Listing.updateMany(
+  { featured: true, featuredUntil: { $lte: now } },
+  { $set: { featured: false, featuredUntil: null } }
+).exec();
+
+// ✅ apoi citim lista
+const listings = await Listing.find(filter).sort(sortQuery).lean().exec();
+return res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings:", err);
     res.status(500).json({ error: "Eroare server." });
