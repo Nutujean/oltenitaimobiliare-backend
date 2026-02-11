@@ -526,7 +526,9 @@ router.put("/:id/publish", protect, async (req, res) => {
     }
 
     if (listing.user && listing.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: "Nu ai dreptul să publici acest anunț." });
+      return res
+        .status(403)
+        .json({ error: "Nu ai dreptul să publici acest anunț." });
     }
 
     if (listing.visibility !== "draft") {
@@ -547,6 +549,52 @@ router.put("/:id/publish", protect, async (req, res) => {
     if (!listing.status) listing.status = "disponibil";
 
     await listing.save();
+
+    // ✅ EMAILURI (user + admin) și la publicarea după plată
+    try {
+      if (listing.email) {
+        await sendEmail({
+          to: listing.email,
+          subject: "Anunț publicat pe OltenitaImobiliare.ro",
+          html: `
+            <div style="font-family:Arial,sans-serif;line-height:1.6">
+              <h2>Anunț publicat cu succes ✅</h2>
+              <p>Anunțul tău a fost publicat pe <b>OltenitaImobiliare.ro</b>.</p>
+              <p><b>Titlu:</b> ${listing.title}</p>
+              <p><b>Localitate:</b> ${listing.location}</p>
+              <p><b>Telefon:</b> ${listing.phone}</p>
+            </div>
+          `,
+        });
+      }
+
+      await sendEmail({
+        to: "oltenitaimobiliare@gmail.com",
+        subject:
+          "💳 Anunț publicat după plată (Promovat) - OltenitaImobiliare.ro",
+        html: `
+          <div style="font-family:Arial,sans-serif;line-height:1.6">
+            <h2>Anunț publicat după plată ✅</h2>
+            <p><b>Titlu:</b> ${listing.title}</p>
+            <p><b>Preț:</b> ${listing.price}</p>
+            <p><b>Categorie:</b> ${listing.category}</p>
+            <p><b>Localitate:</b> ${listing.location}</p>
+            <p><b>Telefon:</b> ${listing.phone}</p>
+            <p><b>Email utilizator:</b> ${listing.email || "-"}</p>
+            <p><b>ID anunț:</b> ${listing._id}</p>
+            <p><b>Tip:</b> PAID / PROMOVAT</p>
+          </div>
+        `,
+      });
+
+      console.log(
+        "✅ Emailuri trimise (publish paid) pentru anunț:",
+        listing._id
+      );
+    } catch (e) {
+      console.error("❌ Eroare trimitere email la publish:", e?.message || e);
+    }
+
     return res.json({ ok: true, listing });
   } catch (err) {
     console.error("❌ Eroare PUT /api/listings/:id/publish:", err);
