@@ -1,4 +1,3 @@
-// routes/listings.js
 import express from "express";
 import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
@@ -36,11 +35,10 @@ router.get("/", async (req, res) => {
     const q = (req.query.q || "").trim();
     const section = (req.query.section || "").trim();
 
-    // 🔥 sortare: ACTIVE + PROMOVATE primele
     let sortQuery = {
       status: 1,
       featured: -1,
-      updatedAt: -1, // ✅ urcă sus când se publică după plată
+      updatedAt: -1,
       createdAt: -1,
     };
 
@@ -58,13 +56,12 @@ router.get("/", async (req, res) => {
     and.push({
       $or: [
         { visibility: "public" },
-        { visibility: { $exists: false } }, // ✅ anunțurile vechi
+        { visibility: { $exists: false } },
       ],
     });
 
-    // ✅ separare: implicit arătăm DOAR imobiliare (și cele vechi fără section)
     if (section) {
-      and.push({ section }); // ex: section=angajari
+      and.push({ section });
     } else {
       and.push({
         $or: [{ section: "imobiliare" }, { section: { $exists: false } }],
@@ -88,15 +85,13 @@ router.get("/", async (req, res) => {
     const filter = and.length ? { $and: and } : {};
     const now = new Date();
 
-// ✅ curățăm promovările expirate
-await Listing.updateMany(
-  { featured: true, featuredUntil: { $lte: now } },
-  { $set: { featured: false, featuredUntil: null } }
-).exec();
+    await Listing.updateMany(
+      { featured: true, featuredUntil: { $lte: now } },
+      { $set: { featured: false, featuredUntil: null } }
+    ).exec();
 
-// ✅ apoi citim lista
-const listings = await Listing.find(filter).sort(sortQuery).lean().exec();
-return res.json(listings);
+    const listings = await Listing.find(filter).sort(sortQuery).lean().exec();
+    return res.json(listings);
   } catch (err) {
     console.error("❌ Eroare GET /api/listings:", err);
     res.status(500).json({ error: "Eroare server." });
@@ -105,7 +100,6 @@ return res.json(listings);
 
 /* =======================================================
    🟦 GET anunțurile mele (autentificat)
-   - ✅ include și drafturi (pentru că sunt ale userului)
 ======================================================= */
 router.get("/mine", protect, async (req, res) => {
   try {
@@ -150,10 +144,6 @@ router.get("/:id", async (req, res) => {
 
 /* =======================================================
    🟧 POST creare anunț nou (autentificat) - PUBLIC
-   - primește FormData cu "images"
-   - FREE: 1 anunț gratuit activ / cont + cooldown după expirare
-   - PAID (isFree=false): 🔒 blocat până legăm plata (402)
-   - ❗️ANGAJARI: NU se publică aici (doar draft+plată)
 ======================================================= */
 router.post("/", protect, upload.array("images", 15), async (req, res) => {
   try {
@@ -172,7 +162,6 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
 
     const finalSection = String(section || "imobiliare").trim();
 
-    // 🔒 Joburile NU se publică direct pe /api/listings
     if (finalSection === "angajari") {
       return res.status(402).json({
         error:
@@ -195,11 +184,10 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
     }
 
     const normalizedPhone = normalizePhone(phone);
+    const cleanTitle = String(title).trim();
 
-    // ✅ stabilim tipul anunțului: FREE vs PAID (default: FREE)
     const isFreeListing = String(isFree ?? "true") === "true";
 
-    // 🔒 IMPORTANT: nu permitem creare PAID fără plată confirmată
     if (!isFreeListing) {
       return res.status(402).json({
         error: "Pentru a publica un anunț Promovat trebuie să finalizezi plata.",
@@ -207,7 +195,6 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
       });
     }
 
-    // ✅ limită imagini în funcție de tip (FREE 10 / PAID 15)
     const maxImages = isFreeListing ? 10 : 15;
     if (req.files && req.files.length > maxImages) {
       return res.status(400).json({
@@ -215,15 +202,12 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
       });
     }
 
-    // user din DB (pentru cooldown)
     const dbUser = await User.findById(req.user._id).exec();
     if (!dbUser) {
       return res.status(401).json({ error: "Utilizator inexistent." });
     }
 
-    // ✅ Limitare + cooldown DOAR pentru anunțuri GRATUITE IMOBILIARE
     if (isFreeListing) {
-      // ✅ 1 anunț gratuit ACTIV / cont (DOAR imobiliare + vechi fără section)
       const activeFree = await Listing.findOne({
         user: req.user._id,
         isFree: true,
@@ -244,7 +228,6 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
         });
       }
 
-      // ✅ cooldown după expirare (tot pentru imobiliare)
       if (
         dbUser.freeCooldownUntil &&
         new Date(dbUser.freeCooldownUntil) > new Date()
@@ -264,23 +247,41 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
       imageUrls = req.files.map((file) => file.path || file.secure_url);
     }
 
-    // ✅ expirare la 15 zile
+    // ✅ protecție minimă anti-duplicat public
+    const existingPublic = await Listing.findOne({
+      user: req.user._id,
+      visibility: "public",
+      title: cleanTitle,
+      phone: normalizedPhone,
+      price: numericPrice,
+      category,
+      location,
+      section: "imobiliare",
+      expiresAt: { $gt: new Date() },
+    }).exec();
+
+    if (existingPublic) {
+      return res.status(409).json({
+        error: "Există deja un anunț public similar activ pentru acest cont.",
+        existingId: existingPublic._id,
+      });
+    }
+
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 15);
 
     const listing = new Listing({
       user: req.user._id,
-      title,
+      title: cleanTitle,
       description,
       price: numericPrice,
       category,
       location,
-      section: "imobiliare", // ✅ FIX
+      section: "imobiliare",
       phone: normalizedPhone,
       email,
       intent,
       images: imageUrls,
-
       visibility: "public",
       isFree: isFreeListing,
       featured: false,
@@ -290,7 +291,6 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
 
     await listing.save();
 
-    // ✅ dacă e FREE, setăm cooldown = expiresAt + COOLDOWN_DAYS
     if (isFreeListing) {
       dbUser.freeCooldownUntil = new Date(
         new Date(expiresAt).getTime() +
@@ -299,7 +299,6 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
       await dbUser.save();
     }
 
-    // ✅ EMAILURI (user + admin)
     try {
       if (email) {
         await sendEmail({
@@ -309,7 +308,7 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
             <div style="font-family:Arial,sans-serif;line-height:1.6">
               <h2>Anunț publicat cu succes ✅</h2>
               <p>Anunțul tău a fost publicat pe <b>OltenitaImobiliare.ro</b>.</p>
-              <p><b>Titlu:</b> ${title}</p>
+              <p><b>Titlu:</b> ${cleanTitle}</p>
               <p><b>Localitate:</b> ${location}</p>
               <p><b>Telefon:</b> ${normalizedPhone}</p>
             </div>
@@ -323,7 +322,7 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
         html: `
           <div style="font-family:Arial,sans-serif;line-height:1.6">
             <h2>Anunț nou ✅</h2>
-            <p><b>Titlu:</b> ${title}</p>
+            <p><b>Titlu:</b> ${cleanTitle}</p>
             <p><b>Preț:</b> ${numericPrice}</p>
             <p><b>Categorie:</b> ${category}</p>
             <p><b>Localitate:</b> ${location}</p>
@@ -376,8 +375,8 @@ router.post("/draft", protect, upload.array("images", 15), async (req, res) => {
     }
 
     const normalizedPhone = normalizePhone(phone);
+    const cleanTitle = String(title).trim();
 
-    // limită draft: max 15
     if (req.files && req.files.length > 15) {
       return res.status(400).json({ error: "Maxim 15 imagini pentru draft." });
     }
@@ -387,23 +386,52 @@ router.post("/draft", protect, upload.array("images", 15), async (req, res) => {
       imageUrls = req.files.map((file) => file.path || file.secure_url);
     }
 
+    const finalSection = section === "angajari" ? "angajari" : "imobiliare";
+
+    // ✅ dacă există deja un draft similar, îl actualizăm în loc să creăm altul
+    const existingDraft = await Listing.findOne({
+      user: req.user._id,
+      visibility: "draft",
+      title: cleanTitle,
+      phone: normalizedPhone,
+      price: numericPrice,
+      category,
+      location,
+      section: finalSection,
+    }).exec();
+
+    if (existingDraft) {
+      existingDraft.description = description;
+      existingDraft.email = email;
+      existingDraft.intent = intent;
+      if (imageUrls.length > 0) {
+        existingDraft.images = imageUrls;
+      }
+
+      await existingDraft.save();
+
+      return res.status(200).json({
+        ok: true,
+        draftId: existingDraft._id,
+        message: "Draft actualizat.",
+      });
+    }
+
     const draft = new Listing({
       user: req.user._id,
-      title,
+      title: cleanTitle,
       description,
       price: numericPrice,
       category,
       location,
-      section: section === "angajari" ? "angajari" : "imobiliare",
+      section: finalSection,
       phone: normalizedPhone,
       email,
       intent,
       images: imageUrls,
-
       visibility: "draft",
       isFree: false,
       expiresAt: null,
-
       featured: false,
       featuredUntil: null,
       status: "disponibil",
@@ -538,19 +566,15 @@ router.put("/:id/publish", protect, async (req, res) => {
     listing.visibility = "public";
     listing.isFree = false;
 
-    // ✅ expirare 30 zile
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
     listing.expiresAt = expiresAt;
 
-    // ✅ dacă e job, îl lăsăm job; dacă nu, îl setăm imobiliare
     if (!listing.section) listing.section = "imobiliare";
-
     if (!listing.status) listing.status = "disponibil";
 
     await listing.save();
 
-    // ✅ EMAILURI (user + admin) și la publicarea după plată
     try {
       if (listing.email) {
         await sendEmail({
