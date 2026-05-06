@@ -173,7 +173,7 @@ app.use((req, res) => {
 /* =======================================================
    🕒 CRON — EXPIRARE & ȘTERGERE ANUNȚURI
    - expiră după expiresAt (FREE=15 zile / PAID=30 zile setate în routes)
-   - șterge expiratele la 60 zile DUPĂ expirare
+   - șterge expiratele la 180 zile DUPĂ expirare
    - promovatele active NU sunt afectate
 ======================================================= */
 cron.schedule("0 3 * * *", async () => {
@@ -190,8 +190,8 @@ cron.schedule("0 3 * * *", async () => {
       { $set: { status: "expirat" } }
     );
 
-    // 2) ȘTERGE DOAR EXPIRATELE vechi de 60 zile de la expiresAt
-    const deleteExpiredBefore = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    // 2) ȘTERGE DOAR EXPIRATELE vechi de 180 zile de la expiresAt
+    const deleteExpiredBefore = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
 
     const deleted = await Listing.deleteMany({
       status: "expirat",
