@@ -491,20 +491,27 @@ router.put("/:id/reactivate", protect, async (req, res) => {
     const newExpiresAt = new Date();
     newExpiresAt.setDate(newExpiresAt.getDate() + 14);
 
-    listing.status = "disponibil";
-    listing.visibility = "public";
-    listing.isFree = true;
-    listing.featured = false;
-    listing.featuredUntil = null;
-    listing.expiresAt = newExpiresAt;
+    const updated = await Listing.findByIdAndUpdate(
+  id,
+  {
+    $set: {
+      status: "disponibil",
+      visibility: "public",
+      isFree: true,
+      featured: false,
+      featuredUntil: null,
+      expiresAt: newExpiresAt,
+      updatedAt: new Date(),
+    },
+  },
+  { new: true }
+).lean();
 
-    await listing.save();
-
-    return res.json({
-      ok: true,
-      message: "Anunțul a fost reactivat gratuit pentru 14 zile.",
-      listing,
-    });
+return res.json({
+  ok: true,
+  message: "Anunțul a fost reactivat gratuit pentru 14 zile.",
+  listing: updated,
+});
   } catch (err) {
     console.error("❌ Eroare PUT /api/listings/:id/reactivate:", err);
     return res.status(500).json({ error: "Eroare server la reactivare." });
