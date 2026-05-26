@@ -288,7 +288,10 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
       featuredUntil: null,
       expiresAt,
     });
+listing.createdAt =
+  listing.createdAt instanceof Date ? listing.createdAt : new Date();
 
+listing.updatedAt = new Date();
     await listing.save();
 
     if (isFreeListing) {
