@@ -268,7 +268,7 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
     }
 
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 15);
+    expiresAt.setDate(expiresAt.getDate() + 14);
 
     const listing = new Listing({
       user: req.user._id,
@@ -572,10 +572,7 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
     if (location !== undefined) listing.location = location;
     if (phone !== undefined) listing.phone = ph;
     if (email !== undefined) listing.email = email;
-    if (finalIntent !== undefined) {
-  listing.intent = finalIntent;
-  listing.type = undefined;
-}
+    if (finalIntent !== undefined) listing.intent = finalIntent;
 
     const existing = [].concat(req.body.existingImages || []).filter(Boolean);
     const existingImages2 = Array.isArray(existing) ? existing : [existing];
