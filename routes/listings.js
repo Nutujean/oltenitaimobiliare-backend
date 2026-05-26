@@ -585,11 +585,31 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
     if (combined.length > 0) {
       listing.images = combined;
     }
-listing.featuredUntil =
-  listing.featuredUntil instanceof Date ? listing.featuredUntil : null;
+const safeDate = (d) => {
+  if (!d) return null;
+
+  if (d instanceof Date) return d;
+
+  if (typeof d === "string" || typeof d === "number") {
+    const parsed = new Date(d);
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  if (typeof d === "object" && d.$date) {
+    const parsed = new Date(d.$date);
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
+};
+
+listing.featuredUntil = safeDate(listing.featuredUntil);
 
 listing.expiresAt =
-  listing.expiresAt instanceof Date ? listing.expiresAt : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  safeDate(listing.expiresAt) ||
+  new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+listing.createdAt = safeDate(listing.createdAt) || new Date();
     await listing.save();
     res.json(listing);
   } catch (err) {
