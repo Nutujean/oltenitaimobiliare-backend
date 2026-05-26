@@ -449,7 +449,64 @@ router.post("/draft", protect, upload.array("images", 15), async (req, res) => {
     return res.status(500).json({ error: "Eroare server la salvarea draftului." });
   }
 });
+/* =======================================================
+   🟩 PUT reactivare gratuită după 30 zile de la expirare
+======================================================= */
+router.put("/:id/reactivate", protect, async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ error: "ID invalid." });
+    }
+
+    const listing = await Listing.findById(id).exec();
+
+    if (!listing) {
+      return res.status(404).json({ error: "Anunțul nu a fost găsit." });
+    }
+
+    if (listing.user && listing.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: "Nu ai dreptul să reactivezi acest anunț." });
+    }
+
+    if (!listing.expiresAt) {
+      return res.status(400).json({ error: "Anunțul nu are dată de expirare." });
+    }
+
+    const now = new Date();
+    const expiredAt = new Date(listing.expiresAt);
+    const daysSinceExpired = Math.floor((now - expiredAt) / (1000 * 60 * 60 * 24));
+
+    if (daysSinceExpired < 30) {
+      return res.status(400).json({
+        error: "Acest anunț poate fi reactivat gratuit doar după 30 zile de la expirare. Până atunci, trebuie promovat.",
+        mustPromote: true,
+      });
+    }
+
+    const newExpiresAt = new Date();
+    newExpiresAt.setDate(newExpiresAt.getDate() + 14);
+
+    listing.status = "disponibil";
+    listing.visibility = "public";
+    listing.isFree = true;
+    listing.featured = false;
+    listing.featuredUntil = null;
+    listing.expiresAt = newExpiresAt;
+
+    await listing.save();
+
+    return res.json({
+      ok: true,
+      message: "Anunțul a fost reactivat gratuit pentru 14 zile.",
+      listing,
+    });
+  } catch (err) {
+    console.error("❌ Eroare PUT /api/listings/:id/reactivate:", err);
+    return res.status(500).json({ error: "Eroare server la reactivare." });
+  }
+});
 /* =======================================================
    🟧 PUT actualizare anunț
 ======================================================= */
