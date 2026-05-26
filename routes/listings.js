@@ -572,7 +572,10 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
     if (location !== undefined) listing.location = location;
     if (phone !== undefined) listing.phone = ph;
     if (email !== undefined) listing.email = email;
-    if (finalIntent !== undefined) listing.intent = finalIntent;
+    if (finalIntent !== undefined) {
+  listing.intent = finalIntent;
+  listing.type = undefined;
+}
 
     const existing = [].concat(req.body.existingImages || []).filter(Boolean);
     const existingImages2 = Array.isArray(existing) ? existing : [existing];
@@ -585,7 +588,11 @@ router.put("/:id", protect, upload.array("images", 15), async (req, res) => {
     if (combined.length > 0) {
       listing.images = combined;
     }
+listing.featuredUntil =
+  listing.featuredUntil instanceof Date ? listing.featuredUntil : null;
 
+listing.expiresAt =
+  listing.expiresAt instanceof Date ? listing.expiresAt : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
     await listing.save();
     res.json(listing);
   } catch (err) {
