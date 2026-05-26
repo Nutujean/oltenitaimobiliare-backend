@@ -258,7 +258,7 @@ router.get("/confirm", async (req, res) => {
       setUpdate.expiresAt =
         expiresAtDraft > featuredUntil ? expiresAtDraft : featuredUntil;
 
-      if (!existing.status) setUpdate.status = "disponibil";
+      setUpdate.status = "disponibil";
     }
 
     // ✅ dacă NU e draft, dar e expirat, îl reactivăm automat
@@ -272,6 +272,7 @@ router.get("/confirm", async (req, res) => {
 
       if (isExpiredByDate || isExpiredByStatus) {
         setUpdate.status = "disponibil";
+        setUpdate.visibility = "public";
 
         const currentExpires = existing.expiresAt ? new Date(existing.expiresAt) : null;
         setUpdate.expiresAt =

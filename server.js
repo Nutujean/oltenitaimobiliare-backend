@@ -133,10 +133,19 @@ app.post("/api/admin/promote/:id", async (req, res) => {
     const featuredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
     const updated = await Listing.findByIdAndUpdate(
-      id,
-      { featuredUntil },
-      { new: true }
-    );
+  id,
+  {
+    $set: {
+      featured: true,
+      featuredUntil,
+      status: "disponibil",
+      visibility: "public",
+      isFree: false,
+      expiresAt: featuredUntil,
+    },
+  },
+  { new: true }
+);
 
     if (!updated) {
       return res.status(404).json({ ok: false, error: "Anunțul nu există." });
@@ -172,7 +181,7 @@ app.use((req, res) => {
 
 /* =======================================================
    🕒 CRON — EXPIRARE & ȘTERGERE ANUNȚURI
-   - expiră după expiresAt (FREE=15 zile / PAID=30 zile setate în routes)
+   - expiră după expiresAt (FREE=14 zile / PAID setate în routes)
    - șterge expiratele la 180 zile DUPĂ expirare
    - promovatele active NU sunt afectate
 ======================================================= */
