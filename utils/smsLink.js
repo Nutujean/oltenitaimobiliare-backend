@@ -7,42 +7,35 @@ const PASSWORD = process.env.SMSLINK_PASSWORD?.trim();
 // 🕒 OTP-urile vor fi stocate temporar în memorie
 const otpStore = {};
 
-/* =======================================================
-   📤 Trimite OTP prin SMSLink (fără sender explicit)
-======================================================= */
-export default async function sendOtpSMS(phone) {
-  try {
-    // Curățăm numărul — doar cifre
-    const cleanPhone = phone.replace(/[^\d]/g, "");
-    console.log("📞 Număr primit în backend:", phone);
-    console.log("📞 După curățare:", cleanPhone);
+function cleanSmsPhone(phone) {
+  return String(phone || "").replace(/[^\d]/g, "").replace(/^4/, "");
+}
 
-    // SMSLink cere format: 07xxxxxxxx (10 cifre)
+async function sendSmsLinkMessage(phone, message) {
+  try {
+    const cleanPhone = cleanSmsPhone(phone);
+
     if (!/^07\d{8}$/.test(cleanPhone)) {
       console.error(`❌ Număr invalid pentru SMSLink: ${cleanPhone}`);
       return { success: false, error: "Număr invalid (folosește formatul 07xxxxxxxx)" };
     }
 
-    // Generăm codul OTP
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore[cleanPhone] = code;
+    if (!SMSLINK_BASE_URL || !CONNECTION_ID || !PASSWORD) {
+      console.error("❌ Config SMSLink lipsă în .env");
+      return { success: false, error: "Config SMSLink lipsă." };
+    }
 
-    console.log(`📤 SMSLink către ${cleanPhone}: cod ${code}`);
-
-    // ✅ Construim URL-ul corect, fără sender
     const params = new URLSearchParams({
-     connection_id: CONNECTION_ID,
-     password: PASSWORD,
-     to: cleanPhone.slice(-10),
-     message: `oltenitaimobiliare.ro - Codul tau de verificare este ${code}. Valabil 5 minute.`,
-   });
+      connection_id: CONNECTION_ID,
+      password: PASSWORD,
+      to: cleanPhone.slice(-10),
+      message: String(message || "").slice(0, 320),
+    });
 
     const url = `${SMSLINK_BASE_URL}?${params.toString()}`;
-    console.log("🔗 URL SMSLink:", url);
-
     const res = await axios.get(url);
 
-    if (res.data.includes("ERROR")) {
+    if (String(res.data).includes("ERROR")) {
       console.error("❌ SMSLink ERROR:", res.data);
       return { success: false, error: res.data };
     }
@@ -55,10 +48,35 @@ export default async function sendOtpSMS(phone) {
 }
 
 /* =======================================================
+   📤 Trimite OTP prin SMSLink (fără sender explicit)
+======================================================= */
+export default async function sendOtpSMS(phone) {
+  const cleanPhone = cleanSmsPhone(phone);
+
+  // Generăm codul OTP
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  otpStore[cleanPhone] = code;
+
+  console.log(`📤 SMSLink OTP către ${cleanPhone}: cod ${code}`);
+
+  return sendSmsLinkMessage(
+    cleanPhone,
+    `oltenitaimobiliare.ro - Codul tau de verificare este ${code}. Valabil 5 minute.`
+  );
+}
+
+/* =======================================================
+   📣 Trimite SMS notificare anunț
+======================================================= */
+export async function sendListingNotificationSMS(phone, message) {
+  return sendSmsLinkMessage(phone, message);
+}
+
+/* =======================================================
    ✅ Verificare OTP local
 ======================================================= */
 export async function verifyOtpSMS(phone, code) {
-  const cleanPhone = phone.replace(/[^\d]/g, "");
+  const cleanPhone = cleanSmsPhone(phone);
   const valid = otpStore[cleanPhone] && otpStore[cleanPhone] === code;
 
   if (valid) {
