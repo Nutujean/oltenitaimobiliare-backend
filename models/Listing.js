@@ -95,9 +95,13 @@ const ListingSchema = new Schema(
     featuredUntil: { type: Date, default: null },
 
     // =========================
-    // STATISTICI
+    // STATISTICI & NOTIFICĂRI
     // =========================
     views: { type: Number, default: 0, min: 0 },
+    lastViewedAt: { type: Date, default: null },
+    viewMilestoneSmsSent: { type: [Number], default: [] },
+    expireSms2DaysSentAt: { type: Date, default: null },
+    expireSmsExpiredSentAt: { type: Date, default: null },
 
     // =========================
     // REGULĂ FREE / PAID
@@ -125,5 +129,6 @@ ListingSchema.index({ expiresAt: 1 });
 ListingSchema.index({ visibility: 1 });
 ListingSchema.index({ section: 1 });
 ListingSchema.index({ views: -1 });
+ListingSchema.index({ lastViewedAt: -1 });
 
 export default mongoose.model("Listing", ListingSchema);
