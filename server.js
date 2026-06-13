@@ -9,7 +9,9 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import cron from "node-cron";
 import https from "https";
+import crypto from "crypto";
 import Listing from "./models/Listing.js";
+import ListingView from "./models/ListingView.js";
 
 // 🔹 Import rute
 import phoneAuthRoutes from "./routes/phoneAuth.js";
@@ -88,6 +90,78 @@ console.log("🟢 Încep montarea rutelor Express...");
 
 // 🏡 RUTE SHARE — foarte important să fie devreme
 app.use("/", shareRoutes); // 👈 Aici vine /share/:id și /fb/:id
+
+/* =======================================================
+   👁️ COUNTING VIZUALIZĂRI ANUNȚURI
+   - 1 vizualizare / anunț / vizitator / 24h
+   - identificare discretă: IP + user-agent
+======================================================= */
+app.post("/api/listings/:id/view", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ ok: false, error: "ID invalid." });
+    }
+
+    const listingExists = await Listing.exists({ _id: id });
+    if (!listingExists) {
+      return res.status(404).json({ ok: false, error: "Anunțul nu a fost găsit." });
+    }
+
+    const forwardedFor = String(req.headers["x-forwarded-for"] || "")
+      .split(",")[0]
+      .trim();
+    const ip = forwardedFor || req.ip || req.socket?.remoteAddress || "unknown-ip";
+    const userAgent = String(req.headers["user-agent"] || "unknown-agent");
+
+    const visitorKey = crypto
+      .createHash("sha256")
+      .update(`${ip}|${userAgent}`)
+      .digest("hex");
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    let counted = false;
+
+    try {
+      await ListingView.create({
+        listing: id,
+        visitorKey,
+        expiresAt,
+      });
+
+      counted = true;
+    } catch (err) {
+      if (err?.code !== 11000) {
+        throw err;
+      }
+    }
+
+    let listing;
+
+    if (counted) {
+      listing = await Listing.findByIdAndUpdate(
+        id,
+        { $inc: { views: 1 } },
+        { new: true }
+      )
+        .select("views")
+        .lean();
+    } else {
+      listing = await Listing.findById(id).select("views").lean();
+    }
+
+    return res.json({
+      ok: true,
+      counted,
+      views: listing?.views || 0,
+    });
+  } catch (err) {
+    console.error("❌ Eroare POST /api/listings/:id/view:", err);
+    return res.status(500).json({ ok: false, error: "Eroare server la contorizarea vizualizării." });
+  }
+});
 
 // Rute API
 
