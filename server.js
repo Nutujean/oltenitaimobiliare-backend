@@ -12,6 +12,9 @@ import https from "https";
 import crypto from "crypto";
 import Listing from "./models/Listing.js";
 import ListingView from "./models/ListingView.js";
+import ListingViewEvent from "./models/ListingViewEvent.js";
+import { protect } from "./middleware/authMiddleware.js";
+import { sendListingNotificationSMS } from "./utils/smsLink.js";
 
 // 🔹 Import rute
 import phoneAuthRoutes from "./routes/phoneAuth.js";
@@ -27,6 +30,60 @@ import anunturileMeleRoute from "./routes/anunturileMele.js";
 dotenv.config();
 const app = express();
 app.set("trust proxy", 1);
+
+const VIEW_SMS_THRESHOLDS = [100, 250, 500, 1000];
+
+function normalizeSmsPhone(value = "") {
+  return String(value).replace(/\D/g, "").replace(/^4/, "");
+}
+
+function shortTitle(title = "") {
+  const clean = String(title || "anuntul tau").trim();
+  return clean.length > 42 ? `${clean.slice(0, 39)}...` : clean;
+}
+
+function getInterestLevel(weeklyViews = 0) {
+  if (weeklyViews >= 50) return "ridicat";
+  if (weeklyViews >= 15) return "bun";
+  return "scazut";
+}
+
+async function maybeSendViewMilestoneSms(listing) {
+  try {
+    if (!listing?.phone) return;
+
+    const views = Number(listing.views || 0);
+    const alreadySent = Array.isArray(listing.viewMilestoneSmsSent)
+      ? listing.viewMilestoneSmsSent
+      : [];
+
+    const milestone = VIEW_SMS_THRESHOLDS.find(
+      (t) => views >= t && !alreadySent.includes(t)
+    );
+
+    if (!milestone) return;
+
+    const phone = normalizeSmsPhone(listing.phone);
+    if (!/^07\d{8}$/.test(phone)) return;
+
+    const message =
+      milestone >= 1000
+        ? `OltenitaImobiliare.ro: Felicitari! Anuntul "${shortTitle(listing.title)}" a depasit 1000 vizualizari. Intra in cont pentru statistici.`
+        : `OltenitaImobiliare.ro: Anuntul "${shortTitle(listing.title)}" a depasit ${milestone} vizualizari. Intra in cont pentru statistici.`;
+
+    const sms = await sendListingNotificationSMS(phone, message);
+
+    if (sms.success) {
+      await Listing.updateOne(
+        { _id: listing._id },
+        { $addToSet: { viewMilestoneSmsSent: milestone } }
+      );
+      console.log(`📩 SMS prag ${milestone} trimis pentru anunț ${listing._id}`);
+    }
+  } catch (err) {
+    console.error("❌ Eroare SMS prag vizualizări:", err?.message || err);
+  }
+}
 
 /* =======================================================
    🌐 CORS + BODY PARSERS
@@ -94,7 +151,8 @@ app.use("/", shareRoutes); // 👈 Aici vine /share/:id și /fb/:id
 /* =======================================================
    👁️ COUNTING VIZUALIZĂRI ANUNȚURI
    - 1 vizualizare / anunț / vizitator / 24h
-   - identificare discretă: IP + user-agent
+   - istoric separat pentru statistica ultimelor 7 zile
+   - SMS automat la 100 / 250 / 500 / 1000 vizualizări
 ======================================================= */
 app.post("/api/listings/:id/view", async (req, res) => {
   try {
@@ -141,25 +199,78 @@ app.post("/api/listings/:id/view", async (req, res) => {
     let listing;
 
     if (counted) {
+      await ListingViewEvent.create({
+        listing: id,
+        viewedAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      });
+
       listing = await Listing.findByIdAndUpdate(
         id,
-        { $inc: { views: 1 } },
+        { $inc: { views: 1 }, $set: { lastViewedAt: new Date() } },
         { new: true }
       )
-        .select("views")
+        .select("title phone views lastViewedAt viewMilestoneSmsSent")
         .lean();
+
+      await maybeSendViewMilestoneSms(listing);
     } else {
-      listing = await Listing.findById(id).select("views").lean();
+      listing = await Listing.findById(id).select("views lastViewedAt").lean();
     }
 
     return res.json({
       ok: true,
       counted,
       views: listing?.views || 0,
+      lastViewedAt: listing?.lastViewedAt || null,
     });
   } catch (err) {
     console.error("❌ Eroare POST /api/listings/:id/view:", err);
     return res.status(500).json({ ok: false, error: "Eroare server la contorizarea vizualizării." });
+  }
+});
+
+/* =======================================================
+   📊 Anunțurile mele + statistici profesionale
+======================================================= */
+app.get("/api/listings/mine-stats", protect, async (req, res) => {
+  try {
+    const listings = await Listing.find({ user: req.user._id })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    const ids = listings.map((l) => l._id).filter(Boolean);
+    const since7Days = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const weeklyCounts = ids.length
+      ? await ListingViewEvent.aggregate([
+          { $match: { listing: { $in: ids }, viewedAt: { $gte: since7Days } } },
+          { $group: { _id: "$listing", count: { $sum: 1 } } },
+        ])
+      : [];
+
+    const weeklyMap = new Map(weeklyCounts.map((row) => [String(row._id), row.count]));
+
+    const enriched = listings.map((listing) => {
+      const weeklyViews = weeklyMap.get(String(listing._id)) || 0;
+      const expiresAt = listing.expiresAt ? new Date(listing.expiresAt) : null;
+      const daysUntilExpire = expiresAt
+        ? Math.ceil((expiresAt - new Date()) / (1000 * 60 * 60 * 24))
+        : null;
+
+      return {
+        ...listing,
+        weeklyViews,
+        interestLevel: getInterestLevel(weeklyViews),
+        daysUntilExpire,
+      };
+    });
+
+    return res.json(enriched);
+  } catch (err) {
+    console.error("❌ Eroare GET /api/listings/mine-stats:", err);
+    return res.status(500).json({ error: "Eroare server la încărcarea statisticilor." });
   }
 });
 
@@ -250,20 +361,77 @@ app.use((req, res) => {
   res.status(404).send("Not found");
 });
 
-// ✅ backend/server.js
-// Înlocuiește COMPLET tot blocul de CRON (de la `cron.schedule(` până la `});`) cu acesta:
-
 /* =======================================================
-   🕒 CRON — EXPIRARE & ȘTERGERE ANUNȚURI
-   - expiră după expiresAt (FREE=14 zile / PAID setate în routes)
+   🕒 CRON — EXPIRARE, ȘTERGERE & SMS EXPIRARE
+   - SMS cu 2 zile înainte de expirare
+   - SMS în ziua expirării
+   - expiră după expiresAt
    - șterge expiratele la 180 zile DUPĂ expirare
-   - promovatele active NU sunt afectate
 ======================================================= */
 cron.schedule("0 3 * * *", async () => {
   try {
     const now = new Date();
+    const in2DaysStart = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
+    in2DaysStart.setHours(0, 0, 0, 0);
+    const in2DaysEnd = new Date(in2DaysStart);
+    in2DaysEnd.setHours(23, 59, 59, 999);
+
+    // 0) SMS cu 2 zile înainte de expirare
+    const expiringSoon = await Listing.find({
+      visibility: "public",
+      status: "disponibil",
+      expiresAt: { $gte: in2DaysStart, $lte: in2DaysEnd },
+      expireSms2DaysSentAt: null,
+      $or: [{ featuredUntil: null }, { featuredUntil: { $lt: now } }],
+    })
+      .select("title phone")
+      .lean();
+
+    for (const listing of expiringSoon) {
+      const phone = normalizeSmsPhone(listing.phone);
+      if (!/^07\d{8}$/.test(phone)) continue;
+
+      const sms = await sendListingNotificationSMS(
+        phone,
+        `OltenitaImobiliare.ro: Anuntul "${shortTitle(listing.title)}" expira in 2 zile. Promoveaza-l din cont pentru a ramane activ si vizibil.`
+      );
+
+      if (sms.success) {
+        await Listing.updateOne(
+          { _id: listing._id, expireSms2DaysSentAt: null },
+          { $set: { expireSms2DaysSentAt: new Date() } }
+        );
+      }
+    }
 
     // 1) EXPIRĂ (doar dacă NU e promovat activ)
+    const toExpire = await Listing.find({
+      status: "disponibil",
+      expiresAt: { $lt: now },
+      $or: [{ featuredUntil: null }, { featuredUntil: { $lt: now } }],
+    })
+      .select("title phone expireSmsExpiredSentAt")
+      .lean();
+
+    for (const listing of toExpire) {
+      if (listing.expireSmsExpiredSentAt) continue;
+
+      const phone = normalizeSmsPhone(listing.phone);
+      if (!/^07\d{8}$/.test(phone)) continue;
+
+      const sms = await sendListingNotificationSMS(
+        phone,
+        `OltenitaImobiliare.ro: Anuntul "${shortTitle(listing.title)}" a expirat. Il poti reactiva prin promovare direct din contul tau.`
+      );
+
+      if (sms.success) {
+        await Listing.updateOne(
+          { _id: listing._id, expireSmsExpiredSentAt: null },
+          { $set: { expireSmsExpiredSentAt: new Date() } }
+        );
+      }
+    }
+
     const expired = await Listing.updateMany(
       {
         status: "disponibil",
@@ -282,9 +450,9 @@ cron.schedule("0 3 * * *", async () => {
       $or: [{ featuredUntil: null }, { featuredUntil: { $lt: now } }],
     });
 
-    if (expired.modifiedCount || deleted.deletedCount) {
+    if (expired.modifiedCount || deleted.deletedCount || expiringSoon.length || toExpire.length) {
       console.log(
-        `🧹 CRON OK → Expirate: ${expired.modifiedCount}, Șterse: ${deleted.deletedCount}`
+        `🧹 CRON OK → SMS -2 zile: ${expiringSoon.length}, SMS expirare: ${toExpire.length}, Expirate: ${expired.modifiedCount}, Șterse: ${deleted.deletedCount}`
       );
     }
   } catch (err) {
