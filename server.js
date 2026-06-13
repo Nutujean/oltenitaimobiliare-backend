@@ -68,8 +68,8 @@ async function maybeSendViewMilestoneSms(listing) {
 
     const message =
       milestone >= 1000
-        ? `OltenitaImobiliare.ro: Felicitari! Anuntul "${shortTitle(listing.title)}" a depasit 1000 vizualizari. Intra in cont pentru statistici.`
-        : `OltenitaImobiliare.ro: Anuntul "${shortTitle(listing.title)}" a depasit ${milestone} vizualizari. Intra in cont pentru statistici.`;
+        ? "OltenitaImobiliare.ro: Felicitari! Anuntul tau a depasit 1000 de vizualizari. Intra in cont pentru statistici complete."
+        : `OltenitaImobiliare.ro: Anuntul tau a depasit ${milestone} de vizualizari. Intra in cont pentru statistici complete.`;
 
     const sms = await sendListingNotificationSMS(phone, message);
 
