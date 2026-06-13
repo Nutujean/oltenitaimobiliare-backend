@@ -22,10 +22,10 @@ const ListingSchema = new Schema(
     // SECȚIUNE (imobiliare / angajări)
     // =========================
     section: {
-    type: String,
-    enum: ["imobiliare", "angajari"],
-    default: "imobiliare",
-  },
+      type: String,
+      enum: ["imobiliare", "angajari"],
+      default: "imobiliare",
+    },
 
     // =========================
     // IMAGINI
@@ -95,6 +95,11 @@ const ListingSchema = new Schema(
     featuredUntil: { type: Date, default: null },
 
     // =========================
+    // STATISTICI
+    // =========================
+    views: { type: Number, default: 0, min: 0 },
+
+    // =========================
     // REGULĂ FREE / PAID
     // =========================
     isFree: { type: Boolean, default: true },
@@ -119,5 +124,6 @@ ListingSchema.index({ intent: 1 });
 ListingSchema.index({ expiresAt: 1 });
 ListingSchema.index({ visibility: 1 });
 ListingSchema.index({ section: 1 });
+ListingSchema.index({ views: -1 });
 
 export default mongoose.model("Listing", ListingSchema);
