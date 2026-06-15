@@ -48,17 +48,20 @@ function getInterestLevel(weeklyViews = 0) {
   return "scazut";
 }
 
-async function maybeSendViewMilestoneSms(listing) {
+async function maybeSendViewMilestoneSms(listing, previousViews = 0) {
   try {
     if (!listing?.phone) return;
 
     const views = Number(listing.views || 0);
+    const before = Number(previousViews || 0);
     const alreadySent = Array.isArray(listing.viewMilestoneSmsSent)
       ? listing.viewMilestoneSmsSent
       : [];
 
+    // Trimitem SMS doar când anunțul TRECE efectiv peste prag.
+    // Exemplu: 99 -> 100 trimite; 120 -> 121 nu trimite pentru pragul 100.
     const milestone = VIEW_SMS_THRESHOLDS.find(
-      (t) => views >= t && !alreadySent.includes(t)
+      (t) => before < t && views >= t && !alreadySent.includes(t)
     );
 
     if (!milestone) return;
@@ -162,10 +165,12 @@ app.post("/api/listings/:id/view", async (req, res) => {
       return res.status(400).json({ ok: false, error: "ID invalid." });
     }
 
-    const listingExists = await Listing.exists({ _id: id });
-    if (!listingExists) {
+    const existingListing = await Listing.findById(id).select("views").lean();
+    if (!existingListing) {
       return res.status(404).json({ ok: false, error: "Anunțul nu a fost găsit." });
     }
+
+    const previousViews = Number(existingListing.views || 0);
 
     const forwardedFor = String(req.headers["x-forwarded-for"] || "")
       .split(",")[0]
@@ -213,7 +218,7 @@ app.post("/api/listings/:id/view", async (req, res) => {
         .select("title phone views lastViewedAt viewMilestoneSmsSent")
         .lean();
 
-      await maybeSendViewMilestoneSms(listing);
+      await maybeSendViewMilestoneSms(listing, previousViews);
     } else {
       listing = await Listing.findById(id).select("views lastViewedAt").lean();
     }
