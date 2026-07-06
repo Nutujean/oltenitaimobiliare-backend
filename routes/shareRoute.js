@@ -27,10 +27,67 @@ function isBot(userAgent = "") {
   );
 }
 
+function extractImageUrl(value) {
+  if (!value) return "";
+
+  if (typeof value === "string") return value.trim();
+
+  if (typeof value === "object") {
+    return (
+      value.secure_url ||
+      value.url ||
+      value.src ||
+      value.path ||
+      value.imageUrl ||
+      value.image ||
+      ""
+    );
+  }
+
+  return "";
+}
+
+function normalizeImageUrl(url) {
+  const clean = String(url || "").trim();
+
+  if (!clean) return FALLBACK.image;
+
+  if (clean.startsWith("//")) return `https:${clean}`;
+  if (clean.startsWith("http://")) return clean.replace("http://", "https://");
+  if (clean.startsWith("https://")) return clean;
+  if (clean.startsWith("/")) return `https://oltenitaimobiliare.ro${clean}`;
+
+  return clean;
+}
+
+function getListingImage(listing = {}) {
+  const candidates = [];
+
+  if (Array.isArray(listing.images)) candidates.push(...listing.images);
+  if (Array.isArray(listing.photos)) candidates.push(...listing.photos);
+  if (Array.isArray(listing.gallery)) candidates.push(...listing.gallery);
+
+  candidates.push(
+    listing.imageUrl,
+    listing.image,
+    listing.photo,
+    listing.thumbnail,
+    listing.coverImage,
+    listing.mainImage
+  );
+
+  for (const item of candidates) {
+    const url = extractImageUrl(item);
+    if (url) return normalizeImageUrl(url);
+  }
+
+  return FALLBACK.image;
+}
+
 function renderHtml({ title, description, image, shareUrl, canonicalUrl, redirectTo, shouldRedirect }) {
   const t = escapeHtml(title);
   const d = escapeHtml(description);
-  const img = escapeHtml(image || FALLBACK.image);
+  const img = escapeHtml(normalizeImageUrl(image || FALLBACK.image));
   const ogUrl = escapeHtml(shareUrl);
   const canonical = escapeHtml(canonicalUrl);
   const redirect = escapeHtml(redirectTo);
@@ -48,8 +105,6 @@ function renderHtml({ title, description, image, shareUrl, canonicalUrl, redirec
   <meta property="og:image" content="${img}">
   <meta property="og:image:secure_url" content="${img}">
   <meta property="og:image:alt" content="${t}">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
   <meta property="og:locale" content="ro_RO">
 
   <meta name="twitter:card" content="summary_large_image">
@@ -82,7 +137,8 @@ async function buildSharePage(req, res) {
   const apiUrl = `${API_BASE}/listings/${id}`;
   const shouldRedirect = !isBot(req.headers["user-agent"]);
 
-  res.set("Cache-Control", "public, max-age=300");
+  // Facebook cache-uiește agresiv. Păstrăm cache mic pe server.
+  res.set("Cache-Control", "public, max-age=60");
 
   try {
     const r = await fetch(apiUrl, { headers: { Accept: "application/json" } });
@@ -116,10 +172,7 @@ async function buildSharePage(req, res) {
       (listing?.description ? String(listing.description).replace(/\s+/g, " ").slice(0, 180) : "") ||
       "Vezi detalii despre acest anunț imobiliar din Oltenița.";
 
-    const image =
-      (Array.isArray(listing?.images) && listing.images[0]) ||
-      listing?.imageUrl ||
-      FALLBACK.image;
+    const image = getListingImage(listing);
 
     const publicUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id || id}`;
 
