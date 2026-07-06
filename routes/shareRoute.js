@@ -5,7 +5,6 @@ const router = express.Router();
 // ✅ API-ul care sigur vede anunțurile
 const API_BASE = "https://api.oltenitaimobiliare.ro/api";
 
-// fallback
 const FALLBACK = {
   title: "Oltenita Imobiliare - Anunțuri imobiliare în Oltenița și împrejurimi",
   desc: "Descoperă cele mai noi anunțuri imobiliare din Oltenița și împrejurimi: case, apartamente, terenuri și spații comerciale.",
@@ -22,10 +21,19 @@ function escapeHtml(s = "") {
     .replace(/'/g, "&#39;");
 }
 
-function renderHtml({ title, description, image, shareUrl, canonicalUrl, redirectTo }) {
+function isBot(userAgent = "") {
+  return /facebookexternalhit|Facebot|Twitterbot|WhatsApp|LinkedInBot|TelegramBot|Slackbot|Discordbot|crawler|spider|bot/i.test(
+    String(userAgent || "")
+  );
+}
+
+function renderHtml({ title, description, image, shareUrl, canonicalUrl, redirectTo, shouldRedirect }) {
   const t = escapeHtml(title);
   const d = escapeHtml(description);
-  const img = image || FALLBACK.image;
+  const img = escapeHtml(image || FALLBACK.image);
+  const ogUrl = escapeHtml(shareUrl);
+  const canonical = escapeHtml(canonicalUrl);
+  const redirect = escapeHtml(redirectTo);
 
   return `<!DOCTYPE html>
 <html lang="ro">
@@ -34,50 +42,52 @@ function renderHtml({ title, description, image, shareUrl, canonicalUrl, redirec
   <title>${t}</title>
 
   <meta property="og:type" content="article">
-  <meta property="og:url" content="${shareUrl}">
+  <meta property="og:url" content="${ogUrl}">
   <meta property="og:title" content="${t}">
   <meta property="og:description" content="${d}">
   <meta property="og:image" content="${img}">
   <meta property="og:image:secure_url" content="${img}">
   <meta property="og:image:alt" content="${t}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta property="og:locale" content="ro_RO">
-  <meta property="fb:app_id" content="966242223397117">
 
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${t}">
   <meta name="twitter:description" content="${d}">
   <meta name="twitter:image" content="${img}">
 
-  <link rel="canonical" href="${canonicalUrl}">
+  <link rel="canonical" href="${canonical}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- ✅ Redirecționare sigură (Facebook citește meta-urile din HEAD) -->
-  <meta http-equiv="refresh" content="0;url=${redirectTo}">
+  ${
+    shouldRedirect
+      ? `<script>window.location.replace("${redirect}");</script>`
+      : ""
+  }
 </head>
-<body>
-  <noscript>
-    <a href="${redirectTo}">Deschide anunțul</a>
-  </noscript>
+<body style="font-family: Arial, sans-serif; padding: 24px;">
+  <h1>${t}</h1>
+  <p>${d}</p>
+  <p><a href="${redirect}">Deschide anunțul</a></p>
 </body>
 </html>`;
 }
 
-/* ============================================================
-   🏡 RUTĂ PRINCIPALĂ PENTRU META SHARE (Open Graph)
-   ============================================================ */
-router.get("/share/:id", async (req, res) => {
+async function buildSharePage(req, res) {
   const { id } = req.params;
+  const sharePath = req.path.startsWith("/fb/") ? "fb" : "share";
 
-  // URL-uri
-  const shareUrl = `https://share.oltenitaimobiliare.ro/share/${id}`;
+  const shareUrl = `https://share.oltenitaimobiliare.ro/${sharePath}/${id}`;
   const apiUrl = `${API_BASE}/listings/${id}`;
+  const shouldRedirect = !isBot(req.headers["user-agent"]);
+
+  res.set("Cache-Control", "public, max-age=300");
 
   try {
-    // Node 18+ are fetch global (pe Render, de obicei este)
-    const r = await fetch(apiUrl, { headers: { "Accept": "application/json" } });
+    const r = await fetch(apiUrl, { headers: { Accept: "application/json" } });
 
     if (!r.ok) {
-      // dacă API nu găsește, dăm fallback OG + redirect la homepage
       const html = renderHtml({
         title: FALLBACK.title,
         description: FALLBACK.desc,
@@ -85,15 +95,25 @@ router.get("/share/:id", async (req, res) => {
         shareUrl,
         canonicalUrl: FALLBACK.url,
         redirectTo: FALLBACK.url,
+        shouldRedirect,
       });
+
       return res.status(200).type("html").send(html);
     }
 
     const listing = await r.json();
 
-    const title = listing?.title || "Anunț imobiliar în Oltenița";
+    const titleParts = [];
+    if (listing?.title) titleParts.push(String(listing.title));
+    if (listing?.price) titleParts.push(`${listing.price} €`);
+    if (listing?.location) titleParts.push(String(listing.location));
+
+    const title = titleParts.length
+      ? titleParts.join(" - ")
+      : "Anunț imobiliar în Oltenița";
+
     const description =
-      (listing?.description ? String(listing.description).slice(0, 150) : "") ||
+      (listing?.description ? String(listing.description).replace(/\s+/g, " ").slice(0, 180) : "") ||
       "Vezi detalii despre acest anunț imobiliar din Oltenița.";
 
     const image =
@@ -110,11 +130,11 @@ router.get("/share/:id", async (req, res) => {
       shareUrl,
       canonicalUrl: publicUrl,
       redirectTo: publicUrl,
+      shouldRedirect,
     });
 
     return res.status(200).type("html").send(html);
   } catch (err) {
-    // fallback în caz de eroare
     const html = renderHtml({
       title: FALLBACK.title,
       description: FALLBACK.desc,
@@ -122,9 +142,19 @@ router.get("/share/:id", async (req, res) => {
       shareUrl,
       canonicalUrl: FALLBACK.url,
       redirectTo: FALLBACK.url,
+      shouldRedirect,
     });
+
     return res.status(200).type("html").send(html);
   }
-});
+}
+
+/* ============================================================
+   🏡 RUTE PENTRU META SHARE (Open Graph)
+   /share/:id - varianta standard
+   /fb/:id    - compatibilitate cu butoanele mai vechi din site
+   ============================================================ */
+router.get("/share/:id", buildSharePage);
+router.get("/fb/:id", buildSharePage);
 
 export default router;
