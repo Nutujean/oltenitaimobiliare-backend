@@ -26,6 +26,11 @@ function isBot(userAgent = "") {
   );
 }
 
+function getObjectIdFromParam(value = "") {
+  const match = String(value).match(/[a-fA-F0-9]{24}/);
+  return match ? match[0] : "";
+}
+
 function extractImageUrl(value) {
   if (!value) return "";
 
@@ -125,12 +130,11 @@ function renderHtml({ title, description, image, shareUrl, canonicalUrl, redirec
 }
 
 async function buildSharePage(req, res) {
-  const { id } = req.params;
+  const rawParam = req.params.id || "";
+  const id = getObjectIdFromParam(rawParam);
   const sharePath = req.path.startsWith("/fb/") ? "fb" : "share";
 
-  const baseShareUrl = `https://share.oltenitaimobiliare.ro/${sharePath}/${id}`;
-  const version = req.query?.v ? `?v=${encodeURIComponent(String(req.query.v))}` : "";
-  const shareUrl = `${baseShareUrl}${version}`;
+  const publicShareUrl = `https://oltenitaimobiliare.ro/${sharePath}/${encodeURIComponent(rawParam)}`;
   const shouldRedirect = !isBot(req.headers["user-agent"]);
 
   res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
@@ -138,12 +142,12 @@ async function buildSharePage(req, res) {
   res.set("Expires", "0");
 
   try {
-    if (!mongoose.isValidObjectId(id)) {
+    if (!id || !mongoose.isValidObjectId(id)) {
       const html = renderHtml({
         title: FALLBACK.title,
         description: FALLBACK.desc,
         image: FALLBACK.image,
-        shareUrl,
+        shareUrl: publicShareUrl,
         canonicalUrl: FALLBACK.url,
         redirectTo: FALLBACK.url,
         shouldRedirect,
@@ -151,8 +155,6 @@ async function buildSharePage(req, res) {
       return res.status(200).type("html").send(html);
     }
 
-    // Citim direct din MongoDB. Nu mai facem fetch către API-ul public,
-    // ca să nu cădem pe fallback dacă HTTP-ul intern eșuează.
     const listing = await Listing.findById(id).lean().exec();
 
     if (!listing) {
@@ -160,7 +162,7 @@ async function buildSharePage(req, res) {
         title: FALLBACK.title,
         description: FALLBACK.desc,
         image: FALLBACK.image,
-        shareUrl,
+        shareUrl: publicShareUrl,
         canonicalUrl: FALLBACK.url,
         redirectTo: FALLBACK.url,
         shouldRedirect,
@@ -186,7 +188,7 @@ async function buildSharePage(req, res) {
       title,
       description,
       image,
-      shareUrl,
+      shareUrl: publicShareUrl,
       canonicalUrl: publicUrl,
       redirectTo: publicUrl,
       shouldRedirect,
@@ -200,7 +202,7 @@ async function buildSharePage(req, res) {
       title: FALLBACK.title,
       description: FALLBACK.desc,
       image: FALLBACK.image,
-      shareUrl,
+      shareUrl: publicShareUrl,
       canonicalUrl: FALLBACK.url,
       redirectTo: FALLBACK.url,
       shouldRedirect,
@@ -213,8 +215,8 @@ async function buildSharePage(req, res) {
 // Rută de verificare rapidă pentru imaginea pe care o vede Facebook.
 router.get("/share-debug/:id", async (req, res) => {
   try {
-    const { id } = req.params;
-    if (!mongoose.isValidObjectId(id)) {
+    const id = getObjectIdFromParam(req.params.id || "");
+    if (!id || !mongoose.isValidObjectId(id)) {
       return res.status(400).json({ ok: false, error: "ID invalid" });
     }
 
