@@ -1,9 +1,8 @@
 import express from "express";
+import mongoose from "mongoose";
+import Listing from "../models/Listing.js";
 
 const router = express.Router();
-
-// ✅ API-ul care sigur vede anunțurile
-const API_BASE = "https://api.oltenitaimobiliare.ro/api";
 
 const FALLBACK = {
   title: "Oltenita Imobiliare - Anunțuri imobiliare în Oltenița și împrejurimi",
@@ -115,11 +114,7 @@ function renderHtml({ title, description, image, shareUrl, canonicalUrl, redirec
   <link rel="canonical" href="${canonical}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  ${
-    shouldRedirect
-      ? `<script>window.location.replace("${redirect}");</script>`
-      : ""
-  }
+  ${shouldRedirect ? `<script>window.location.replace("${redirect}");</script>` : ""}
 </head>
 <body style="font-family: Arial, sans-serif; padding: 24px;">
   <h1>${t}</h1>
@@ -133,17 +128,17 @@ async function buildSharePage(req, res) {
   const { id } = req.params;
   const sharePath = req.path.startsWith("/fb/") ? "fb" : "share";
 
-  const shareUrl = `https://share.oltenitaimobiliare.ro/${sharePath}/${id}`;
-  const apiUrl = `${API_BASE}/listings/${id}`;
+  const baseShareUrl = `https://share.oltenitaimobiliare.ro/${sharePath}/${id}`;
+  const version = req.query?.v ? `?v=${encodeURIComponent(String(req.query.v))}` : "";
+  const shareUrl = `${baseShareUrl}${version}`;
   const shouldRedirect = !isBot(req.headers["user-agent"]);
 
-  // Facebook cache-uiește agresiv. Păstrăm cache mic pe server.
-  res.set("Cache-Control", "public, max-age=60");
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
 
   try {
-    const r = await fetch(apiUrl, { headers: { Accept: "application/json" } });
-
-    if (!r.ok) {
+    if (!mongoose.isValidObjectId(id)) {
       const html = renderHtml({
         title: FALLBACK.title,
         description: FALLBACK.desc,
@@ -153,27 +148,38 @@ async function buildSharePage(req, res) {
         redirectTo: FALLBACK.url,
         shouldRedirect,
       });
-
       return res.status(200).type("html").send(html);
     }
 
-    const listing = await r.json();
+    // Citim direct din MongoDB. Nu mai facem fetch către API-ul public,
+    // ca să nu cădem pe fallback dacă HTTP-ul intern eșuează.
+    const listing = await Listing.findById(id).lean().exec();
+
+    if (!listing) {
+      const html = renderHtml({
+        title: FALLBACK.title,
+        description: FALLBACK.desc,
+        image: FALLBACK.image,
+        shareUrl,
+        canonicalUrl: FALLBACK.url,
+        redirectTo: FALLBACK.url,
+        shouldRedirect,
+      });
+      return res.status(200).type("html").send(html);
+    }
 
     const titleParts = [];
     if (listing?.title) titleParts.push(String(listing.title));
     if (listing?.price) titleParts.push(`${listing.price} €`);
     if (listing?.location) titleParts.push(String(listing.location));
 
-    const title = titleParts.length
-      ? titleParts.join(" - ")
-      : "Anunț imobiliar în Oltenița";
+    const title = titleParts.length ? titleParts.join(" - ") : "Anunț imobiliar în Oltenița";
 
     const description =
       (listing?.description ? String(listing.description).replace(/\s+/g, " ").slice(0, 180) : "") ||
       "Vezi detalii despre acest anunț imobiliar din Oltenița.";
 
     const image = getListingImage(listing);
-
     const publicUrl = `https://oltenitaimobiliare.ro/anunt/${listing._id || id}`;
 
     const html = renderHtml({
@@ -188,6 +194,8 @@ async function buildSharePage(req, res) {
 
     return res.status(200).type("html").send(html);
   } catch (err) {
+    console.error("❌ Eroare share Open Graph:", err?.message || err);
+
     const html = renderHtml({
       title: FALLBACK.title,
       description: FALLBACK.desc,
@@ -201,6 +209,32 @@ async function buildSharePage(req, res) {
     return res.status(200).type("html").send(html);
   }
 }
+
+// Rută de verificare rapidă pentru imaginea pe care o vede Facebook.
+router.get("/share-debug/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ ok: false, error: "ID invalid" });
+    }
+
+    const listing = await Listing.findById(id).lean().exec();
+    if (!listing) {
+      return res.status(404).json({ ok: false, error: "Anunț negăsit" });
+    }
+
+    return res.json({
+      ok: true,
+      id,
+      title: listing.title,
+      images: listing.images || [],
+      imageUrl: listing.imageUrl || "",
+      selectedImage: getListingImage(listing),
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err?.message || "Eroare" });
+  }
+});
 
 /* ============================================================
    🏡 RUTE PENTRU META SHARE (Open Graph)
