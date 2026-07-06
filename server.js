@@ -1,4 +1,3 @@
-
 /* =======================================================
    ✅ SERVER FINAL — API Oltenița Imobiliare
 ======================================================= */
@@ -19,11 +18,12 @@ import { sendListingNotificationSMS } from "./utils/smsLink.js";
 // 🔹 Import rute
 import phoneAuthRoutes from "./routes/phoneAuth.js";
 import authRoutes from "./routes/authRoutes.js";
+import listingsCreateGuardRoutes from "./routes/listingsCreateGuard.js";
 import listingsRoutes from "./routes/listings.js";
 import usersRoutes from "./routes/users.js";
 import stripeRoutes from "./routes/stripeRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
-import shareRoutes from "./routes/shareRoute.js";      // 👈 SHARE
+import shareRoutes from "./routes/shareRoute.js";
 import sitemapRoute from "./routes/sitemapRoutes.js";
 import anunturileMeleRoute from "./routes/anunturileMele.js";
 
@@ -58,8 +58,6 @@ async function maybeSendViewMilestoneSms(listing, previousViews = 0) {
       ? listing.viewMilestoneSmsSent
       : [];
 
-    // Trimitem SMS doar când anunțul TRECE efectiv peste prag.
-    // Exemplu: 99 -> 100 trimite; 120 -> 121 nu trimite pentru pragul 100.
     const milestone = VIEW_SMS_THRESHOLDS.find(
       (t) => before < t && views >= t && !alreadySent.includes(t)
     );
@@ -88,9 +86,6 @@ async function maybeSendViewMilestoneSms(listing, previousViews = 0) {
   }
 }
 
-/* =======================================================
-   🌐 CORS + BODY PARSERS
-======================================================= */
 app.use(
   cors({
     origin: "*",
@@ -101,9 +96,6 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-/* =======================================================
-   🔍 HEALTH & PING — o singură dată
-======================================================= */
 app.get("/api/ping", (req, res) => {
   res.json({ ok: true, from: "server.js", time: new Date().toISOString() });
 });
@@ -112,9 +104,6 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true, message: "Backend funcționează normal ✅" });
 });
 
-/* =======================================================
-   📦 CONEXIUNE MONGO
-======================================================= */
 const MONGODB_URI =
   process.env.MONGODB_URI ||
   process.env.MONGO_URI ||
@@ -128,9 +117,6 @@ mongoose
     process.exit(1);
   });
 
-/* =======================================================
-   📄 robots.txt — permitem Facebook & toți botii
-======================================================= */
 app.get("/robots.txt", (req, res) => {
   res.type("text/plain").send(
     [
@@ -143,20 +129,10 @@ app.get("/robots.txt", (req, res) => {
   );
 });
 
-/* =======================================================
-   🧩 RUTE — ÎN ORDINE
-======================================================= */
 console.log("🟢 Încep montarea rutelor Express...");
 
-// 🏡 RUTE SHARE — foarte important să fie devreme
-app.use("/", shareRoutes); // 👈 Aici vine /share/:id și /fb/:id
+app.use("/", shareRoutes);
 
-/* =======================================================
-   👁️ COUNTING VIZUALIZĂRI ANUNȚURI
-   - 1 vizualizare / anunț / vizitator / 24h
-   - istoric separat pentru statistica ultimelor 7 zile
-   - SMS automat la 100 / 250 / 500 / 1000 vizualizări
-======================================================= */
 app.post("/api/listings/:id/view", async (req, res) => {
   try {
     const { id } = req.params;
@@ -188,17 +164,10 @@ app.post("/api/listings/:id/view", async (req, res) => {
     let counted = false;
 
     try {
-      await ListingView.create({
-        listing: id,
-        visitorKey,
-        expiresAt,
-      });
-
+      await ListingView.create({ listing: id, visitorKey, expiresAt });
       counted = true;
     } catch (err) {
-      if (err?.code !== 11000) {
-        throw err;
-      }
+      if (err?.code !== 11000) throw err;
     }
 
     let listing;
@@ -235,9 +204,6 @@ app.post("/api/listings/:id/view", async (req, res) => {
   }
 });
 
-/* =======================================================
-   📊 Anunțurile mele + statistici profesionale
-======================================================= */
 app.get("/api/listings/mine-stats", protect, async (req, res) => {
   try {
     const listings = await Listing.find({ user: req.user._id })
@@ -264,12 +230,7 @@ app.get("/api/listings/mine-stats", protect, async (req, res) => {
         ? Math.ceil((expiresAt - new Date()) / (1000 * 60 * 60 * 24))
         : null;
 
-      return {
-        ...listing,
-        weeklyViews,
-        interestLevel: getInterestLevel(weeklyViews),
-        daysUntilExpire,
-      };
+      return { ...listing, weeklyViews, interestLevel: getInterestLevel(weeklyViews), daysUntilExpire };
     });
 
     return res.json(enriched);
@@ -280,30 +241,21 @@ app.get("/api/listings/mine-stats", protect, async (req, res) => {
 });
 
 // Rute API
-
 app.use("/api/phone", phoneAuthRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/listings", listingsCreateGuardRoutes);
 app.use("/api/listings", listingsRoutes);
 app.use("/api", anunturileMeleRoute);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/contact", contactRoutes);
 
-// Sitemap / alte rute publice
 app.use("/", sitemapRoute);
 
-// Root simplu
 app.get("/", (req, res) => {
-  res.json({
-    message: "Oltenita Imobiliare API activ ✅",
-    time: new Date().toISOString(),
-  });
+  res.json({ message: "Oltenita Imobiliare API activ ✅", time: new Date().toISOString() });
 });
-/* =======================================================
-   🔐 ADMIN — PROMOVARE GRATUITĂ (fără Stripe)
-   Header: x-admin-key: <ADMIN_KEY din .env>
-   Body: { "days": 7 }  (sau 14 / 30)
-======================================================= */
+
 app.post("/api/admin/promote/:id", async (req, res) => {
   try {
     const adminKey = req.headers["x-admin-key"];
@@ -317,25 +269,24 @@ app.post("/api/admin/promote/:id", async (req, res) => {
     }
 
     const { id } = req.params;
-    const daysRaw = req.body?.days ?? 30; // default 30 zile
-    const days = Math.max(1, Math.min(365, Number(daysRaw) || 30)); // 1..365
-
+    const daysRaw = req.body?.days ?? 30;
+    const days = Math.max(1, Math.min(365, Number(daysRaw) || 30));
     const featuredUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
     const updated = await Listing.findByIdAndUpdate(
-  id,
-  {
-    $set: {
-      featured: true,
-      featuredUntil,
-      status: "disponibil",
-      visibility: "public",
-      isFree: false,
-      expiresAt: featuredUntil,
-    },
-  },
-  { new: true }
-);
+      id,
+      {
+        $set: {
+          featured: true,
+          featuredUntil,
+          status: "disponibil",
+          visibility: "public",
+          isFree: false,
+          expiresAt: featuredUntil,
+        },
+      },
+      { new: true }
+    );
 
     if (!updated) {
       return res.status(404).json({ ok: false, error: "Anunțul nu există." });
@@ -355,9 +306,6 @@ app.post("/api/admin/promote/:id", async (req, res) => {
 
 console.log("✔ Toate rutele Express au fost montate corect.");
 
-/* =======================================================
-   🚫 Fallback 404 — ULTIMUL
-======================================================= */
 app.use((req, res) => {
   console.warn("⚠️ Ruta necunoscută:", req.originalUrl);
   if (req.path.startsWith("/api/")) {
@@ -366,13 +314,6 @@ app.use((req, res) => {
   res.status(404).send("Not found");
 });
 
-/* =======================================================
-   🕒 CRON — EXPIRARE, ȘTERGERE & SMS EXPIRARE
-   - SMS cu 2 zile înainte de expirare
-   - SMS în ziua expirării
-   - expiră după expiresAt
-   - șterge expiratele la 180 zile DUPĂ expirare
-======================================================= */
 cron.schedule("0 3 * * *", async () => {
   try {
     const now = new Date();
@@ -381,7 +322,6 @@ cron.schedule("0 3 * * *", async () => {
     const in2DaysEnd = new Date(in2DaysStart);
     in2DaysEnd.setHours(23, 59, 59, 999);
 
-    // 0) SMS cu 2 zile înainte de expirare
     const expiringSoon = await Listing.find({
       visibility: "public",
       status: "disponibil",
@@ -409,7 +349,6 @@ cron.schedule("0 3 * * *", async () => {
       }
     }
 
-    // 1) EXPIRĂ (doar dacă NU e promovat activ)
     const toExpire = await Listing.find({
       status: "disponibil",
       expiresAt: { $lt: now },
@@ -446,7 +385,6 @@ cron.schedule("0 3 * * *", async () => {
       { $set: { status: "expirat" } }
     );
 
-    // 2) ȘTERGE DOAR EXPIRATELE vechi de 180 zile de la expiresAt
     const deleteExpiredBefore = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
 
     const deleted = await Listing.deleteMany({
@@ -465,9 +403,6 @@ cron.schedule("0 3 * * *", async () => {
   }
 });
 
-/* =======================================================
-   🔁 KEEP-ALIVE RENDER
-======================================================= */
 setInterval(() => {
   const url = "https://api.oltenitaimobiliare.ro/api/health";
   https
@@ -475,9 +410,6 @@ setInterval(() => {
     .on("error", (err) => console.error("❌ Keep-alive error:", err.message));
 }, 2 * 60 * 1000);
 
-/* =======================================================
-   🚀 START SERVER
-======================================================= */
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, "0.0.0.0", () =>
   console.log(`🚀 Server pornit pe portul ${PORT}`)
