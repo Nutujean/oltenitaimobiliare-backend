@@ -41,19 +41,33 @@ const ListingSchema = new Schema(
     userEmail: { type: String, trim: true },
 
     // =========================
-    // STATUS PUBLIC (NU SE ATINGE)
+    // STATUS PUBLIC
+    // disponibil / expirat
     // =========================
     status: {
       type: String,
       enum: ["disponibil", "expirat"],
       default: "disponibil",
     },
-    rezervat: { type: Boolean, default: false },
 
     // =========================
-    // VIZIBILITATE (CHEIA SOLUȚIEI)
-    // public  → apare pe site
-    // draft   → apare DOAR la "Anunțurile mele"
+    // STAREA PROPRIETĂȚII
+    // separat de status/expirare
+    // =========================
+    rezervat: {
+      type: Boolean,
+      default: false,
+    },
+
+    vandut: {
+      type: Boolean,
+      default: false,
+    },
+
+    // =========================
+    // VIZIBILITATE
+    // public → apare pe site
+    // draft  → apare doar la Anunțurile mele
     // =========================
     visibility: {
       type: String,
@@ -64,7 +78,10 @@ const ListingSchema = new Schema(
     // =========================
     // UTILIZATOR
     // =========================
-    user: { type: Schema.Types.ObjectId, ref: "User" },
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+    },
 
     // =========================
     // DETALII OPȚIONALE
@@ -91,30 +108,63 @@ const ListingSchema = new Schema(
     // =========================
     // PROMOVARE
     // =========================
-    featured: { type: Boolean, default: false },
-    featuredUntil: { type: Date, default: null },
+    featured: {
+      type: Boolean,
+      default: false,
+    },
+
+    featuredUntil: {
+      type: Date,
+      default: null,
+    },
 
     // =========================
     // STATISTICI & NOTIFICĂRI
     // =========================
-    views: { type: Number, default: 0, min: 0 },
-    lastViewedAt: { type: Date, default: null },
-    viewMilestoneSmsSent: { type: [Number], default: [] },
-    expireSms2DaysSentAt: { type: Date, default: null },
-    expireSmsExpiredSentAt: { type: Date, default: null },
+    views: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    lastViewedAt: {
+      type: Date,
+      default: null,
+    },
+
+    viewMilestoneSmsSent: {
+      type: [Number],
+      default: [],
+    },
+
+    expireSms2DaysSentAt: {
+      type: Date,
+      default: null,
+    },
+
+    expireSmsExpiredSentAt: {
+      type: Date,
+      default: null,
+    },
 
     // =========================
     // REGULĂ FREE / PAID
     // =========================
-    isFree: { type: Boolean, default: true },
+    isFree: {
+      type: Boolean,
+      default: true,
+    },
 
     // FREE expiră la 14 zile
     expiresAt: {
       type: Date,
-      default: () => new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+      default: () =>
+        new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
 // =========================
@@ -130,5 +180,7 @@ ListingSchema.index({ visibility: 1 });
 ListingSchema.index({ section: 1 });
 ListingSchema.index({ views: -1 });
 ListingSchema.index({ lastViewedAt: -1 });
+ListingSchema.index({ rezervat: 1 });
+ListingSchema.index({ vandut: 1 });
 
 export default mongoose.model("Listing", ListingSchema);
