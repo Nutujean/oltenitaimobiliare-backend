@@ -813,6 +813,11 @@ router.put(
 /* =======================================================
    🟦 PUT stare proprietate
    DISPONIBIL / REZERVAT / VÂNDUT
+
+   IMPORTANT:
+   Folosim direct MongoDB collection, NU listing.save().
+   Astfel funcționează și pentru anunțurile vechi care au
+   createdAt / alte date salvate într-un format vechi.
 ======================================================= */
 router.put(
   "/:id/property-status",
@@ -821,14 +826,14 @@ router.put(
     try {
       const { id } = req.params;
 
-      if (
-        !mongoose.isValidObjectId(id)
-      ) {
+      // Verificare ID
+      if (!mongoose.isValidObjectId(id)) {
         return res.status(400).json({
           error: "ID invalid.",
         });
       }
 
+      // Starea cerută din frontend
       const propertyStatus = String(
         req.body?.propertyStatus || ""
       )
@@ -841,65 +846,87 @@ router.put(
         "vandut",
       ];
 
-      if (
-        !allowedStatuses.includes(
-          propertyStatus
-        )
-      ) {
+      if (!allowedStatuses.includes(propertyStatus)) {
         return res.status(400).json({
-          error:
-            "Stare proprietate invalidă.",
+          error: "Stare proprietate invalidă.",
         });
       }
 
-      const listing =
-        await Listing.findById(id).exec();
+      const objectId = new mongoose.Types.ObjectId(id);
+
+      // =====================================================
+      // CITIRE DIRECT DIN MONGODB
+      // Nu hidratăm documentul prin Mongoose.
+      // Astfel createdAt vechi/greșit nu mai produce CastError.
+      // =====================================================
+      const listing = await Listing.collection.findOne(
+        { _id: objectId },
+        {
+          projection: {
+            _id: 1,
+            user: 1,
+            visibility: 1,
+            status: 1,
+            expiresAt: 1,
+            rezervat: 1,
+            vandut: 1,
+          },
+        }
+      );
 
       if (!listing) {
         return res.status(404).json({
-          error:
-            "Anunțul nu a fost găsit.",
+          error: "Anunțul nu a fost găsit.",
         });
       }
 
+      // =====================================================
+      // VERIFICĂM PROPRIETARUL
+      // =====================================================
       if (
         !listing.user ||
-        listing.user.toString() !==
-          req.user._id.toString()
+        String(listing.user) !== String(req.user._id)
       ) {
         return res.status(403).json({
-          error:
-            "Nu ai dreptul să modifici acest anunț.",
+          error: "Nu ai dreptul să modifici acest anunț.",
         });
       }
 
-      if (
-        listing.visibility ===
-        "draft"
-      ) {
+      // Draftul nu poate fi rezervat/vândut
+      if (listing.visibility === "draft") {
         return res.status(400).json({
-          error:
-            "Publică mai întâi anunțul.",
+          error: "Publică mai întâi anunțul.",
         });
       }
 
-      const expiresAtMs =
-        listing.expiresAt
-          ? new Date(
-              listing.expiresAt
-            ).getTime()
-          : null;
+      // =====================================================
+      // VERIFICĂM EXPIRAREA
+      // =====================================================
+      let expiredByDate = false;
 
-      const expiredByDate =
-        expiresAtMs !== null &&
-        !Number.isNaN(
-          expiresAtMs
-        ) &&
-        expiresAtMs < Date.now();
+      if (listing.expiresAt) {
+        let expiresValue = listing.expiresAt;
+
+        // Compatibilitate cu documente vechi:
+        // expiresAt: { $date: "..." }
+        if (
+          typeof expiresValue === "object" &&
+          !(expiresValue instanceof Date) &&
+          expiresValue.$date
+        ) {
+          expiresValue = expiresValue.$date;
+        }
+
+        const expiresDate = new Date(expiresValue);
+
+        if (!Number.isNaN(expiresDate.getTime())) {
+          expiredByDate =
+            expiresDate.getTime() < Date.now();
+        }
+      }
 
       if (
-        listing.status ===
-          "expirat" ||
+        String(listing.status || "").toLowerCase() === "expirat" ||
         expiredByDate
       ) {
         return res.status(400).json({
@@ -908,51 +935,84 @@ router.put(
         });
       }
 
-      if (
-        propertyStatus ===
-        "disponibil"
-      ) {
-        listing.rezervat = false;
-        listing.vandut = false;
+      // =====================================================
+      // STABILIM VALORILE
+      // =====================================================
+      let rezervat = false;
+      let vandut = false;
+
+      if (propertyStatus === "rezervat") {
+        rezervat = true;
+        vandut = false;
       }
 
-      if (
-        propertyStatus ===
-        "rezervat"
-      ) {
-        listing.rezervat = true;
-        listing.vandut = false;
+      if (propertyStatus === "vandut") {
+        rezervat = false;
+        vandut = true;
       }
 
-      if (
-        propertyStatus ===
-        "vandut"
-      ) {
-        listing.rezervat = false;
-        listing.vandut = true;
+      if (propertyStatus === "disponibil") {
+        rezervat = false;
+        vandut = false;
       }
 
-      listing.updatedAt =
-        new Date();
+      // =====================================================
+      // UPDATE DIRECT ÎN MONGODB
+      //
+      // Foarte important:
+      // NU folosim listing.save().
+      // Modificăm strict cele 3 câmpuri de mai jos.
+      // createdAt rămâne neatins.
+      // =====================================================
+      const result = await Listing.collection.updateOne(
+        {
+          _id: objectId,
+          user: listing.user,
+        },
+        {
+          $set: {
+            rezervat,
+            vandut,
+            updatedAt: new Date(),
+          },
+        }
+      );
 
-      await listing.save();
+      if (result.matchedCount === 0) {
+        return res.status(404).json({
+          error:
+            "Anunțul nu a mai putut fi găsit pentru actualizare.",
+        });
+      }
+
+      // =====================================================
+      // CITIM DOCUMENTUL ACTUALIZAT TOT DIRECT DIN MONGO
+      // =====================================================
+      const updatedListing =
+        await Listing.collection.findOne({
+          _id: objectId,
+        });
+
+      let message =
+        "Anunțul a fost marcat DISPONIBIL.";
+
+      if (propertyStatus === "rezervat") {
+        message =
+          "Anunțul a fost marcat REZERVAT.";
+      }
+
+      if (propertyStatus === "vandut") {
+        message =
+          "Anunțul a fost marcat VÂNDUT.";
+      }
 
       return res.json({
         ok: true,
         propertyStatus,
-        rezervat:
-          listing.rezervat,
-        vandut:
-          listing.vandut,
-        message:
-          propertyStatus ===
-          "rezervat"
-            ? "Anunțul a fost marcat REZERVAT."
-            : propertyStatus ===
-              "vandut"
-            ? "Anunțul a fost marcat VÂNDUT."
-            : "Anunțul a fost marcat DISPONIBIL.",
-        listing,
+        rezervat,
+        vandut,
+        message,
+        listing: updatedListing,
       });
     } catch (err) {
       console.error(
