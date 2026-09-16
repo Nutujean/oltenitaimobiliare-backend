@@ -24,13 +24,9 @@ const optimizeCloudinaryCardImage = (url, width = LIST_CARD_IMAGE_WIDTH) => {
 
   const before = url.slice(0, markerIndex + marker.length);
   const after = url.slice(markerIndex + marker.length);
-  const firstSegment = after.split("/")[0] || "";
 
-  // Evită adăugarea aceleiași transformări peste un URL deja transformat.
-  if (/^(?:f_|q_|w_|h_|c_|g_|e_|dpr_|fl_|ar_)/.test(firstSegment)) {
-    return url;
-  }
-
+  // Transformarea este doar în URL-ul trimis către lista publică; DB-ul nu se modifică.
+  // Chiar dacă URL-ul vechi conține deja q_auto/f_auto, acest pas garantează limita de 720px.
   return `${before}f_auto,q_auto,w_${width},c_limit/${after}`;
 };
 
