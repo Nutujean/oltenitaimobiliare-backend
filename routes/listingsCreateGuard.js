@@ -8,6 +8,151 @@ import { findSimilarActiveListing, normalizeListingPhone } from "../utils/duplic
 
 const router = express.Router();
 const COOLDOWN_DAYS = 15;
+const LIST_CARD_IMAGE_WIDTH = 720;
+
+// Livrează pe paginile cu liste o variantă Cloudinary optimizată a primei poze.
+// Originalul rămâne neschimbat în MongoDB și este folosit în pagina de detaliu.
+const optimizeCloudinaryCardImage = (url, width = LIST_CARD_IMAGE_WIDTH) => {
+  if (typeof url !== "string") return url;
+
+  const marker = "/upload/";
+  const markerIndex = url.indexOf(marker);
+
+  if (!url.includes("res.cloudinary.com") || markerIndex === -1) {
+    return url;
+  }
+
+  const before = url.slice(0, markerIndex + marker.length);
+  const after = url.slice(markerIndex + marker.length);
+  const firstSegment = after.split("/")[0] || "";
+
+  // Evită adăugarea aceleiași transformări peste un URL deja transformat.
+  if (/^(?:f_|q_|w_|h_|c_|g_|e_|dpr_|fl_|ar_)/.test(firstSegment)) {
+    return url;
+  }
+
+  return `${before}f_auto,q_auto,w_${width},c_limit/${after}`;
+};
+
+const optimizeListingForCards = (listing) => {
+  if (!listing || !Array.isArray(listing.images) || listing.images.length === 0) {
+    return listing;
+  }
+
+  return {
+    ...listing,
+    images: [
+      optimizeCloudinaryCardImage(listing.images[0]),
+      ...listing.images.slice(1),
+    ],
+  };
+};
+
+// Feed public optimizat pentru Home / categorii / toate anunțurile.
+// Acest router este montat înaintea routes/listings.js în server.js.
+router.get("/", async (req, res) => {
+  try {
+    const sortParam = req.query.sort || "newest";
+    const category = (req.query.category || "").trim();
+    const location = (req.query.location || "").trim();
+    const intent = (req.query.intent || "").trim();
+    const q = (req.query.q || "").trim();
+    const section = (req.query.section || "").trim();
+
+    let sortQuery = {
+      status: 1,
+      featured: -1,
+      updatedAt: -1,
+      createdAt: -1,
+    };
+
+    if (sortParam === "cheapest") {
+      sortQuery = {
+        status: 1,
+        featured: -1,
+        price: 1,
+        createdAt: -1,
+      };
+    }
+
+    if (sortParam === "expensive") {
+      sortQuery = {
+        status: 1,
+        featured: -1,
+        price: -1,
+        createdAt: -1,
+      };
+    }
+
+    if (sortParam === "oldest") {
+      sortQuery = {
+        status: 1,
+        featured: -1,
+        createdAt: 1,
+      };
+    }
+
+    const and = [];
+
+    and.push({
+      $or: [
+        { visibility: "public" },
+        { visibility: { $exists: false } },
+      ],
+    });
+
+    if (section) {
+      and.push({ section });
+    } else {
+      and.push({
+        $or: [
+          { section: "imobiliare" },
+          { section: { $exists: false } },
+        ],
+      });
+    }
+
+    if (category) and.push({ category });
+    if (location) and.push({ location });
+    if (intent) and.push({ intent });
+
+    if (q) {
+      and.push({
+        $or: [
+          { title: { $regex: q, $options: "i" } },
+          { description: { $regex: q, $options: "i" } },
+          { location: { $regex: q, $options: "i" } },
+        ],
+      });
+    }
+
+    const filter = and.length ? { $and: and } : {};
+    const now = new Date();
+
+    await Listing.updateMany(
+      {
+        featured: true,
+        featuredUntil: { $lte: now },
+      },
+      {
+        $set: {
+          featured: false,
+          featuredUntil: null,
+        },
+      }
+    ).exec();
+
+    const listings = await Listing.find(filter)
+      .sort(sortQuery)
+      .lean()
+      .exec();
+
+    return res.json(listings.map(optimizeListingForCards));
+  } catch (err) {
+    console.error("❌ Eroare GET /api/listings optimizat:", err);
+    return res.status(500).json({ error: "Eroare server." });
+  }
+});
 
 router.post("/", protect, upload.array("images", 15), async (req, res) => {
   try {
