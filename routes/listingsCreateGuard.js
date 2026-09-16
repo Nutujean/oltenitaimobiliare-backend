@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import Listing from "../models/Listing.js";
 import User from "../models/User.js";
 import { protect } from "../middleware/authMiddleware.js";
@@ -9,26 +10,42 @@ import { findSimilarActiveListing, normalizeListingPhone } from "../utils/duplic
 const router = express.Router();
 const COOLDOWN_DAYS = 15;
 const LIST_CARD_IMAGE_WIDTH = 720;
+const DETAIL_IMAGE_WIDTH = 1600;
+const DETAIL_IMAGE_HEIGHT = 1000;
 
-// Livrează pe paginile cu liste o variantă Cloudinary optimizată a primei poze.
-// Originalul rămâne neschimbat în MongoDB și este folosit în pagina de detaliu.
-const optimizeCloudinaryCardImage = (url, width = LIST_CARD_IMAGE_WIDTH) => {
-  if (typeof url !== "string") return url;
+const optimizeCloudinaryImage = (url, transformation) => {
+  if (typeof url !== "string" || !url) return url;
 
-  const marker = "/upload/";
+  const marker = "/image/upload/";
   const markerIndex = url.indexOf(marker);
 
   if (!url.includes("res.cloudinary.com") || markerIndex === -1) {
     return url;
   }
 
-  const before = url.slice(0, markerIndex + marker.length);
-  const after = url.slice(markerIndex + marker.length);
+  const prefix = url.slice(0, markerIndex + marker.length);
+  const rest = url.slice(markerIndex + marker.length);
 
-  // Transformarea este doar în URL-ul trimis către lista publică; DB-ul nu se modifică.
-  // Chiar dacă URL-ul vechi conține deja q_auto/f_auto, acest pas garantează limita de 720px.
-  return `${before}f_auto,q_auto,w_${width},c_limit/${after}`;
+  // Înlocuiește orice transformare deja existentă, ca să nu stivuim
+  // f_auto/q_auto/w_* de mai multe ori în același URL.
+  const versionIndex = rest.search(/v\d+\//);
+  const assetPath = versionIndex >= 0 ? rest.slice(versionIndex) : rest;
+
+  return `${prefix}${transformation}/${assetPath}`;
 };
+
+// Livrează pe paginile cu liste o variantă Cloudinary optimizată a primei poze.
+// Originalul rămâne neschimbat în MongoDB.
+const optimizeCloudinaryCardImage = (url, width = LIST_CARD_IMAGE_WIDTH) =>
+  optimizeCloudinaryImage(url, `f_auto,q_auto:eco,w_${width},c_limit`);
+
+// Pagina de detaliu păstrează o rezoluție mare, dar nu mai descarcă originalul
+// de câțiva MB. Originalul din MongoDB/Cloudinary nu este modificat.
+const optimizeCloudinaryDetailImage = (url) =>
+  optimizeCloudinaryImage(
+    url,
+    `f_auto,q_auto:good,c_limit,w_${DETAIL_IMAGE_WIDTH},h_${DETAIL_IMAGE_HEIGHT}`
+  );
 
 const optimizeListingForCards = (listing) => {
   if (!listing || !Array.isArray(listing.images) || listing.images.length === 0) {
@@ -41,6 +58,17 @@ const optimizeListingForCards = (listing) => {
       optimizeCloudinaryCardImage(listing.images[0]),
       ...listing.images.slice(1),
     ],
+  };
+};
+
+const optimizeListingForDetail = (listing) => {
+  if (!listing || !Array.isArray(listing.images)) {
+    return listing;
+  }
+
+  return {
+    ...listing,
+    images: listing.images.map(optimizeCloudinaryDetailImage),
   };
 };
 
@@ -147,6 +175,35 @@ router.get("/", async (req, res) => {
   } catch (err) {
     console.error("❌ Eroare GET /api/listings optimizat:", err);
     return res.status(500).json({ error: "Eroare server." });
+  }
+});
+
+// Detaliu anunț optimizat. Pentru rute text precum /mine lăsăm cererea
+// să continue către routerul principal montat după acesta.
+router.get("/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return next();
+    }
+
+    const listing = await Listing.findById(id)
+      .lean()
+      .exec();
+
+    if (!listing) {
+      return res.status(404).json({
+        error: "Anunțul nu a fost găsit.",
+      });
+    }
+
+    return res.json(optimizeListingForDetail(listing));
+  } catch (err) {
+    console.error("❌ Eroare GET /api/listings/:id optimizat:", err);
+    return res.status(500).json({
+      error: "Eroare server la încărcarea anunțului.",
+    });
   }
 });
 
