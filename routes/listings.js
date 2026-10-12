@@ -5,6 +5,7 @@ import User from "../models/User.js";
 import { protect } from "../middleware/authMiddleware.js";
 import upload from "../middleware/upload.js";
 import { sendEmail } from "../utils/sendEmail.js";
+import { makeListingCreationFingerprint } from "../utils/duplicateCheck.js";
 
 const router = express.Router();
 
@@ -608,6 +609,46 @@ router.post(
           ? "angajari"
           : "imobiliare";
 
+      const submissionKey = String(req.body.submissionKey || "").trim();
+      if (submissionKey.length > 120) {
+        return res.status(400).json({ error: "Cheie de publicare invalidă." });
+      }
+
+      const creationFingerprint = makeListingCreationFingerprint({
+        userId: req.user._id,
+        phone: normalizedPhone,
+        title: cleanTitle,
+        description,
+        price: numericPrice,
+        category,
+        location,
+        intent,
+        section: finalSection,
+      });
+
+      const duplicateQuery = submissionKey
+        ? { $or: [{ submissionKey }, { creationFingerprint }] }
+        : { creationFingerprint };
+
+      const previousSubmission = await Listing.findOne({
+        user: req.user._id,
+        ...duplicateQuery,
+      }).lean();
+      if (previousSubmission) {
+        if (previousSubmission.visibility !== "draft") {
+          return res.status(409).json({
+            error: "Acest anunț este deja publicat. Editează-l sau promovează-l pe cel existent.",
+            existingId: previousSubmission._id,
+            duplicate: true,
+          });
+        }
+        return res.status(200).json({
+          ok: true,
+          draftId: previousSubmission._id,
+          message: "Draftul există deja.",
+        });
+      }
+
       const existingDraft =
         await Listing.findOne({
           user: req.user._id,
@@ -658,6 +699,8 @@ router.post(
         email,
         intent,
         images: imageUrls,
+        submissionKey: submissionKey || undefined,
+        creationFingerprint,
         visibility: "draft",
         isFree: false,
         expiresAt: null,
@@ -670,7 +713,31 @@ router.post(
         vandut: false,
       });
 
-      await draft.save();
+      try {
+        await draft.save();
+      } catch (error) {
+        if (error?.code === 11000) {
+          const saved = await Listing.findOne({
+            user: req.user._id,
+            ...duplicateQuery,
+          }).lean();
+          if (saved?.visibility === "draft") {
+            return res.status(200).json({
+              ok: true,
+              draftId: saved._id,
+              message: "Draftul există deja.",
+            });
+          }
+          if (saved) {
+            return res.status(409).json({
+              error: "Acest anunț este deja publicat.",
+              existingId: saved._id,
+              duplicate: true,
+            });
+          }
+        }
+        throw error;
+      }
 
       return res.status(201).json({
         ok: true,

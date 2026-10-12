@@ -111,9 +111,17 @@ const MONGODB_URI =
 
 mongoose
   .connect(MONGODB_URI)
-  .then(() => console.log("✅ MongoDB conectat"))
+  .then(async () => {
+    // Fail closed: never accept concurrent creations before unique indexes exist.
+    await Listing.init();
+    console.log("✅ MongoDB conectat și indexurile anunțurilor pregătite");
+    const PORT = process.env.PORT || 10000;
+    app.listen(PORT, "0.0.0.0", () =>
+      console.log(`🚀 Server pornit pe portul ${PORT}`)
+    );
+  })
   .catch((err) => {
-    console.error("❌ Eroare MongoDB:", err);
+    console.error("❌ Eroare MongoDB sau indexuri:", err);
     process.exit(1);
   });
 
@@ -410,7 +418,4 @@ setInterval(() => {
     .on("error", (err) => console.error("❌ Keep-alive error:", err.message));
 }, 2 * 60 * 1000);
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, "0.0.0.0", () =>
-  console.log(`🚀 Server pornit pe portul ${PORT}`)
-);
+
