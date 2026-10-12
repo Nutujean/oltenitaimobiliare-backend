@@ -1,49 +1,23 @@
 import express from "express";
 import Listing from "../models/Listing.js";
+import { activeListingFilter, renderListingsSitemap } from "../utils/listingSeo.js";
 
-const router = express.Router();
+export function createSitemapRouter({ ListingModel = Listing } = {}) {
+  const router = express.Router();
+  router.get(["/sitemap.xml", "/sitemap-listings.xml"], async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    try {
+      const now = new Date();
+      const listings = await ListingModel.find(activeListingFilter(now))
+        .select("_id updatedAt createdAt visibility status expiresAt vandut")
+        .sort({ _id: 1 }).lean().exec();
+      return res.type("application/xml").send(renderListingsSitemap(listings, now));
+    } catch (error) {
+      console.error("Listings sitemap error:", error.message);
+      return res.status(503).set("Retry-After", "60").type("text/plain").send("Sitemap temporar indisponibil.");
+    }
+  });
+  return router;
+}
 
-/**
- * 🗺️ Generate dynamic sitemap for Google
- */
-router.get("/sitemap.xml", async (req, res) => {
-  try {
-    const baseUrl = "https://oltenitaimobiliare.ro";
-    const listings = await Listing.find({}, "_id updatedAt").sort({ updatedAt: -1 });
-
-    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-    xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
-
-    // Pagini statice
-    const staticPages = ["", "contact", "despre", "termeni-si-conditii"];
-    staticPages.forEach((page) => {
-      xml += `
-        <url>
-          <loc>${baseUrl}/${page}</loc>
-          <changefreq>weekly</changefreq>
-          <priority>0.8</priority>
-        </url>`;
-    });
-
-    // Anunțuri dinamice
-    listings.forEach((listing) => {
-      xml += `
-        <url>
-          <loc>${baseUrl}/anunt/${listing._id}</loc>
-          <lastmod>${listing.updatedAt.toISOString()}</lastmod>
-          <changefreq>weekly</changefreq>
-          <priority>0.9</priority>
-        </url>`;
-    });
-
-    xml += `\n</urlset>`;
-
-    res.header("Content-Type", "application/xml");
-    res.send(xml);
-  } catch (err) {
-    console.error("❌ Eroare sitemap:", err);
-    res.status(500).send("Eroare la generarea sitemap-ului");
-  }
-});
-
-export default router;
+export default createSitemapRouter();

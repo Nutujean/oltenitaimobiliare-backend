@@ -25,6 +25,7 @@ import stripeRoutes from "./routes/stripeRoutes.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import shareRoutes from "./routes/shareRoute.js";
 import sitemapRoute from "./routes/sitemapRoutes.js";
+import listingSeoRoutes from "./routes/listingSeoRoutes.js";
 import anunturileMeleRoute from "./routes/anunturileMele.js";
 
 dotenv.config();
@@ -132,6 +133,7 @@ app.get("/robots.txt", (req, res) => {
 console.log("🟢 Încep montarea rutelor Express...");
 
 app.use("/", shareRoutes);
+app.use("/", listingSeoRoutes);
 
 app.post("/api/listings/:id/view", async (req, res) => {
   try {
