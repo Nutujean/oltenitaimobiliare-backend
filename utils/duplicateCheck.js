@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import Listing from "../models/Listing.js";
 
 export function normalizeListingPhone(value = "") {
@@ -44,6 +45,28 @@ function closePrice(a, b) {
   const diff = Math.abs(first - second);
   const max = Math.max(first, second);
   return diff / max <= 0.03;
+}
+
+// One stable fingerprint per account/property/publishing day.
+// A unique MongoDB index makes simultaneous identical POSTs atomic.
+export function makeListingCreationFingerprint({
+  userId, phone, title, description, price, category, location, intent, section = "imobiliare",
+  now = new Date(),
+}) {
+  const date = new Date(now).toISOString().slice(0, 10);
+  const payload = [
+    String(userId),
+    normalizeListingPhone(phone),
+    normalizeText(title),
+    normalizeText(description),
+    Number(price),
+    normalizeText(category),
+    normalizeText(location),
+    normalizeText(intent),
+    normalizeText(section),
+    date,
+  ];
+  return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
 export async function findSimilarActiveListing({
