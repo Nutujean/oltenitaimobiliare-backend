@@ -147,6 +147,10 @@ const ListingSchema = new Schema(
       default: null,
     },
 
+    // Idempotency: repeated form submissions must resolve to one listing.
+    submissionKey: { type: String, select: false },
+    creationFingerprint: { type: String, select: false },
+
     // =========================
     // REGULĂ FREE / PAID
     // =========================
@@ -170,6 +174,15 @@ const ListingSchema = new Schema(
 // =========================
 // INDEXURI
 // =========================
+// Partial unique indexes leave historical records without these fields untouched.
+ListingSchema.index(
+  { user: 1, submissionKey: 1 },
+  { unique: true, partialFilterExpression: { submissionKey: { $type: "string" } } }
+);
+ListingSchema.index(
+  { user: 1, creationFingerprint: 1 },
+  { unique: true, partialFilterExpression: { creationFingerprint: { $type: "string" } } }
+);
 ListingSchema.index({ createdAt: -1 });
 ListingSchema.index({ category: 1 });
 ListingSchema.index({ location: 1 });
