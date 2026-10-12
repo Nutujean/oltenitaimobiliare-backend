@@ -5,7 +5,7 @@ import User from "../models/User.js";
 import { protect } from "../middleware/authMiddleware.js";
 import upload from "../middleware/upload.js";
 import { sendEmail } from "../utils/sendEmail.js";
-import { findSimilarActiveListing, normalizeListingPhone } from "../utils/duplicateCheck.js";
+import { findSimilarActiveListing, normalizeListingPhone, makeListingCreationFingerprint } from "../utils/duplicateCheck.js";
 
 const router = express.Router();
 const COOLDOWN_DAYS = 15;
@@ -262,6 +262,38 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
       return res.status(401).json({ error: "Utilizator inexistent." });
     }
 
+    // A retry keeps the same submissionKey. An identical form also has the same
+    // fingerprint, even if an older client does not send a submissionKey.
+    const submissionKey = String(req.body.submissionKey || "").trim();
+    if (submissionKey.length > 120) {
+      return res.status(400).json({ error: "Cheie de publicare invalidă." });
+    }
+
+    const creationFingerprint = makeListingCreationFingerprint({
+      userId: req.user._id,
+      phone: normalizedPhone,
+      title: cleanTitle,
+      description: cleanDescription,
+      price: numericPrice,
+      category,
+      location,
+      intent,
+      section: "imobiliare",
+    });
+
+    const duplicateQuery = submissionKey
+      ? { $or: [{ submissionKey }, { creationFingerprint }] }
+      : { creationFingerprint };
+
+    // Check this *before* the free quota/cooldown to make a retry idempotent.
+    const previousSubmission = await Listing.findOne({
+      user: req.user._id,
+      ...duplicateQuery,
+    }).lean();
+    if (previousSubmission) {
+      return res.status(200).json({ ...previousSubmission, duplicatePrevented: true });
+    }
+
     if (isFreeListing) {
       const activeFree = await Listing.findOne({
         user: req.user._id,
@@ -331,6 +363,8 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
       email,
       intent,
       images: imageUrls,
+      submissionKey: submissionKey || undefined,
+      creationFingerprint,
       visibility: "public",
       isFree: isFreeListing,
       featured: false,
@@ -340,7 +374,18 @@ router.post("/", protect, upload.array("images", 15), async (req, res) => {
 
     listing.createdAt = listing.createdAt instanceof Date ? listing.createdAt : new Date();
     listing.updatedAt = new Date();
-    await listing.save();
+    try {
+      await listing.save();
+    } catch (error) {
+      if (error?.code === 11000) {
+        // The other concurrent request won the unique-index race.
+        const saved = await Listing.findOne({ user: req.user._id, ...duplicateQuery }).lean();
+        if (saved) {
+          return res.status(200).json({ ...saved, duplicatePrevented: true });
+        }
+      }
+      throw error;
+    }
 
     if (isFreeListing) {
       dbUser.freeCooldownUntil = new Date(new Date(expiresAt).getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
