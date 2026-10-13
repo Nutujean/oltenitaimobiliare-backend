@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CALARASI_LOCALITIES, canonicalCalarasiLocality, isCalarasiCounty } from "../data/calarasiLocalities.js";
-import { validateImportedOffer } from "../utils/importValidation.js";
+import { validateImportedOffer, missingFromCompleteSnapshot } from "../utils/importValidation.js";
 
 const basicOffer = {
   externalId: "agentie-123",
@@ -59,4 +59,12 @@ test("convertește telefonul internațional și ortografia localității", () =>
   assert.equal(result.ok, true);
   assert.equal(result.value.phone, "0722123456");
   assert.equal(result.value.location, "Oltenița");
+});
+
+test("nu publică un anunț rămas în coadă dacă lipsește din feedul complet", () => {
+  const now = new Date("2026-10-13T11:00:00Z");
+  const record = { externalId: "agentie:123", lastSeenAt: new Date("2026-10-12T10:00:00Z") };
+  assert.equal(missingFromCompleteSnapshot(record, new Set(), now), true);
+  assert.equal(missingFromCompleteSnapshot(record, new Set(["agentie:123"]), now), false);
+  assert.equal(missingFromCompleteSnapshot({ ...record, lastSeenAt: now }, new Set(), now), false);
 });
