@@ -5,7 +5,7 @@ import { canonicalCalarasiLocality, CALARASI_LOCALITIES, normalizePlace } from "
 export const PUBLIC_OFFER_FEEDS = Object.freeze([]);
 
 export function isExcludedExternalSource(urlValue = "", sourceName = "") {
-  const normalizedName = normalizePlace(sourceName).replace(/\\s+/g, "");
+  const normalizedName = normalizePlace(sourceName).replace(/\s+/g, "");
   if (normalizedName.includes("olteniteanul")) return true;
   try {
     const url = new URL(String(urlValue));
@@ -15,7 +15,7 @@ export function isExcludedExternalSource(urlValue = "", sourceName = "") {
         host === "facebook.com" || host.endsWith(".facebook.com") ||
         host === "m.facebook.com") {
       const pathname = decodeURIComponent(url.pathname).normalize("NFD")
-        .replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+        .replace(/[\u0300-\u036f]/g, "").toLowerCase();
       if (pathname.includes("olteniteanul")) return true;
     }
   } catch { return false; }
