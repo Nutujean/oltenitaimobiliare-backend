@@ -26,24 +26,22 @@ jobs:
   inspect-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Check public listing HTML structure
+      - name: Read Anuntul.ro Calarasi listing card HTML for factual links
         run: |
           python3 - <<'PY'
-          from urllib.request import urlopen,Request
-          import re
-          u="https://www.publi24.ro/anunturi/imobiliare/calarasi/"
+          import urllib.request,re
+          u="https://www.anuntul.ro/anunturi-imobiliare-vanzari/toate/judetul-calarasi"
+          req=urllib.request.Request(u,headers={"User-Agent":"Mozilla/5.0 (compatible; OltenitaImobiliare-LinkDirectory/1.0)"})
           try:
-            with urlopen(Request(u,headers={"User-Agent":"Mozilla/5.0"}),timeout=18) as r:
-              html=r.read(1800000).decode("utf-8","replace")
-              print("HTTP",r.status,"url",r.url,"len",len(html))
-              print("TITLE",re.findall(r"<title[^>]*>(.*?)</title>",html,re.S|re.I)[:1])
-              print("LINK SAMPLES",re.findall(r'href="([^"]{20,200})"',html,re.I)[:30])
-              print("JSONLD",len(re.findall(r'application/ld\\+json',html)))
-              for term in ["Casa de vanzare","Casă de vânzare","Oltenita", "Calarasi", "data-id", "data-testid", "classified-card"]:
-                m=re.search(re.escape(term),html,re.I)
-                print("TERM",term,"AT",m.start() if m else -1,"CONTEXT",html[max(0,m.start()-260):m.start()+350].replace("\n"," ") if m else "")
-          except Exception as e:
-            print("ACCESS",type(e).__name__,str(e))
+            with urllib.request.urlopen(req,timeout=15) as r:
+              t=r.read(800000).decode("utf-8","replace")
+              print("HTTP",r.status,"LEN",len(t))
+              found=list(re.finditer(r'href=["\\\'](/anunt-[^"\\\']+)',t))
+              print("COUNT",len(found))
+              for m in found[:3]:
+                print("HTML",t[max(0,m.start()-850):m.end()+500].replace("\n"," ")[:1800])
+          except Exception as exc:
+            print(type(exc).__name__,str(exc))
           PY
 
   inspect-remax:
