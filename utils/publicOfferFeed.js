@@ -92,9 +92,10 @@ export function normalizeRssOffer(item, source, now = new Date()) {
   const title = String(item.title || "").trim().replace(/\s+/g, " ");
   const excerpt = String(item.excerpt || "").trim();
   const plain = normalizePlace(title + " " + excerpt);
+  const titleNormalized = normalizePlace(title);
   if (title.length < 14 || title.length > 180) return null;
-  if (!/\b(vand|vinde|vanzare|inchiriez|inchiriere|se ofera)\b/.test(plain)) return null;
-  const category = categoryOf(plain);
+  if (!/\b(vand|vinde|vanzare|inchiriez|inchiriere|se ofera)\b/.test(titleNormalized)) return null;
+  const category = categoryOf(titleNormalized);
   const locality = detectLocality(title, excerpt);
   if (!category || !locality) return null;
   if (/\bjud(?:etul|et|\.?)?\s+(ilfov|giurgiu|ialomita|teleorman|constanta|bucuresti)\b/.test(plain)) return null;
