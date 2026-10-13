@@ -68,3 +68,18 @@ test("nu publică un anunț rămas în coadă dacă lipsește din feedul complet
   assert.equal(missingFromCompleteSnapshot(record, new Set(["agentie:123"]), now), false);
   assert.equal(missingFromCompleteSnapshot({ ...record, lastSeenAt: now }, new Set(), now), false);
 });
+
+test("blochează Oltenițeanul inclusiv în importul autorizat, nu doar în linkurile publice", () => {
+  const template = {
+    externalId: "xx", county: "Călărași", locality: "Oltenița",
+    category: "Case", title: "Casă de vânzare în Oltenița",
+    description: "Casă în Oltenița cu trei camere și curte, toate informațiile detaliate fiind furnizate direct de vânzător.",
+    price: 75000, phone: "0722123456", intent: "vand", available: true,
+    rightsGranted: true, consentReference: "agreement",
+    images: ["https://example.com/locuinta.jpg"],
+    sourceUrl: "https://www.olteniteanul.ro/anunt-casa",
+  };
+  assert.equal(validateImportedOffer(template).ok, false);
+  assert.equal(validateImportedOffer({ ...template, sourceUrl: "https://facebook.com/olteniteanul/posts/1" }).ok, false);
+  assert.equal(validateImportedOffer({ ...template, sourceUrl: "https://example.com/offer/1" }).ok, true);
+});
