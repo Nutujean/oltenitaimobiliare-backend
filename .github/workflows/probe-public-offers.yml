@@ -26,6 +26,10 @@ jobs:
               for term in ["59.900", "16.000", "Oltenita", "Calarasi", "data-product-id", "productData", "itemprop"]:
                 i=text.find(term)
                 print("TERM",term,"FOUND",i>=0,"SNIPPET",text[max(0,i-100):i+210].replace("\n"," ")[:310] if i>=0 else "")
+              i=text.find("59.900 €")
+              print("CARD_HTML_BEGIN",text[max(0,i-2900):i+900].replace("\n"," "))
+              print("ARTICLE_HREF_COUNT",len(re.findall(r'href=["\\\']/anunt-',text)))
+              print("ARTICLE_HREF_SAMPLES",re.findall(r'href=["\\\'](/anunt-[^"\\\']+)',text)[:8])
           except Exception as e:
             print("ERROR",type(e).__name__,str(e))
             raise
