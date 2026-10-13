@@ -38,7 +38,7 @@ router.get("/status", async (req, res) => {
     ExternalOffer.countDocuments({ publishedDay: day }),
   ]);
   res.json({
-    ok: true, enabled: process.env.PUBLIC_OFFERS_ENABLED === "true",
+    ok: true, enabled: process.env.PUBLIC_OFFERS_ENABLED !== "false",
     day, today, dailyMax: 2, activeOffers: total,
   });
 });
