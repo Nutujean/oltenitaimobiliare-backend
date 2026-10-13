@@ -69,6 +69,7 @@ export function mapLukianProperty(raw, config, agencies = {}) {
   const category = propertyTypes[normalizePlace(raw.property_type)] || "";
   const intent = transactions[normalizePlace(raw.transaction_type)] || "";
   const externalId = String(raw.id ?? "").trim();
+  if (!externalId || externalId.length > 100) return { ok: false, error: "ID de proprietate lipsă/invalid" };
   const offer = {
     externalId: agencyId + ":" + externalId,
     sourceUrl: raw.url,
