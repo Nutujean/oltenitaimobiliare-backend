@@ -1,9 +1,9 @@
 import { canonicalCalarasiLocality, CALARASI_LOCALITIES, normalizePlace } from "../data/calarasiLocalities.js";
 
 export const PUBLIC_OFFER_FEEDS = Object.freeze([
-  { id: "olteniteanul-imobiliare", name: "Oltenițeanul",
-    feedUrl: "https://www.olteniteanul.ro/category/imobiliare-oltenita/feed/",
-    origin: "https://www.olteniteanul.ro" },
+  { id: "anuntul-calarasi-vanzari", name: "Anuntul.ro",
+    feedUrl: "https://www.anuntul.ro/anunturi-imobiliare-vanzari/toate/judetul-calarasi",
+    origin: "https://www.anuntul.ro", type: "html" },
 ]);
 
 function decode(str) {
