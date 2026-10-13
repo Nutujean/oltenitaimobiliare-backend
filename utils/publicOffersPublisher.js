@@ -4,6 +4,7 @@ import ImportLease from "../models/ImportLease.js";
 import Listing from "../models/Listing.js";
 import { PUBLIC_OFFER_FEEDS, normalizeRssOffer, parsePropertyRss, isExcludedExternalSource } from "./publicOfferFeed.js";
 import { localDayKey } from "./authorizedPublisher.js";
+import { parseAnuntulIndex } from "./anuntulIndex.js";
 
 const DAY = 86400000;
 const DAILY_MAX = 2;
@@ -39,7 +40,7 @@ async function getFeed(source, fetchImpl) {
   const timeout = setTimeout(() => controller.abort(), FEED_TIMEOUT);
   try {
     const response = await fetchImpl(source.feedUrl, {
-      headers: { "Accept": "application/rss+xml, application/xml;q=0.9",
+      headers: { "Accept": source.type === "html" ? "text/html" : "application/rss+xml, application/xml;q=0.9",
         "User-Agent": "OltenitaImobiliare-LinkDirectory/1.0 (contact: oltenitaimobiliare@gmail.com)" },
       signal: controller.signal, redirect: "follow",
     });
@@ -51,7 +52,7 @@ async function getFeed(source, fetchImpl) {
     }
     const xml = await response.text();
     if (Buffer.byteLength(xml, "utf8") > MAX_BYTES) throw new Error("RSS prea mare");
-    return parsePropertyRss(xml);
+    return source.type === "html" ? parseAnuntulIndex(xml, source) : parsePropertyRss(xml);
   } finally {
     clearTimeout(timeout);
   }
@@ -94,7 +95,7 @@ export async function publishPublicOfferReferences({ fetchImpl = fetch, now = ne
         result.errors++;
         continue;
       }
-      const eligible = items.map((item) => normalizeRssOffer(item, source, now))
+      const eligible = (source.type === "html" ? items : items.map((item) => normalizeRssOffer(item, source, now)))
         .filter(Boolean).sort((a, b) => b.sourcePublishedAt - a.sourcePublishedAt);
       for (const offer of eligible) {
         if (!available) break;
