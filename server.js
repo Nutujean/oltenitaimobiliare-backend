@@ -326,7 +326,7 @@ app.use((req, res) => {
 // Mențiuni externe cu sursă clară, fără imagini sau telefon copiat.
  // Flux complet separat: nu modifică niciun anunț al utilizatorilor, Stripe sau free cooldown.
 cron.schedule("15 10,16 * * *", async () => {
-  if (process.env.PUBLIC_OFFERS_ENABLED !== "true") return;
+  if (process.env.PUBLIC_OFFERS_ENABLED === "false") return;
   try {
     console.log("RSS Oferte externe:", await publishPublicOfferReferences());
   } catch (err) {
