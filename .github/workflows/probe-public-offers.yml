@@ -1,0 +1,30 @@
+name: Verify external Calarasi source references
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/probe-public-offers.yml'
+      - 'utils/publicOfferFeed.js'
+      - 'utils/anuntulIndex.js'
+      - 'utils/publicOffersPublisher.js'
+      - 'routes/publicOffersRoutes.js'
+      - 'models/ExternalOffer.js'
+      - 'test/public-offers.test.js'
+      - 'test/anuntul-index.test.js'
+      - 'server.js'
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax and Calarasi-only verification
+        run: |
+          node --check utils/publicOfferFeed.js
+          node --check utils/anuntulIndex.js
+          node --check utils/publicOffersPublisher.js
+          node --check models/ExternalOffer.js
+          node --check routes/publicOffersRoutes.js
+          node --check server.js
+          node --test test/public-offers.test.js test/anuntul-index.test.js
