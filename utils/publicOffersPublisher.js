@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import ExternalOffer from "../models/ExternalOffer.js";
 import ImportLease from "../models/ImportLease.js";
 import Listing from "../models/Listing.js";
-import { PUBLIC_OFFER_FEEDS, normalizeRssOffer, parsePropertyRss } from "./publicOfferFeed.js";
+import { PUBLIC_OFFER_FEEDS, normalizeRssOffer, parsePropertyRss, isExcludedExternalSource } from "./publicOfferFeed.js";
 import { localDayKey } from "./authorizedPublisher.js";
 
 const DAY = 86400000;
@@ -75,6 +75,8 @@ async function lease(now) {
 
 export async function publishPublicOfferReferences({ fetchImpl = fetch, now = new Date() } = {}) {
   if (process.env.PUBLIC_OFFERS_ENABLED !== "true") return { status: "disabled", published: 0 };
+  const eligibleSources = PUBLIC_OFFER_FEEDS.filter((source) => !isExcludedExternalSource(source.feedUrl, source.name));
+  if (!eligibleSources.length) return { status: "unconfigured", published: 0 };
   const owner = await lease(now);
   if (!owner) return { status: "busy", published: 0 };
   const day = localDayKey(now);
@@ -82,7 +84,7 @@ export async function publishPublicOfferReferences({ fetchImpl = fetch, now = ne
   try {
     let available = Math.max(0, DAILY_MAX - await ExternalOffer.countDocuments({ publishedDay: day }));
     if (!available) return { ...result, status: "daily_limit" };
-    for (const source of PUBLIC_OFFER_FEEDS) {
+    for (const source of eligibleSources) {
       if (!available) break;
       let items;
       try {
