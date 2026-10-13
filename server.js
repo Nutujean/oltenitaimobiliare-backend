@@ -10,6 +10,7 @@ import cron from "node-cron";
 import https from "https";
 import crypto from "crypto";
 import Listing from "./models/Listing.js";
+import ExternalOffer from "./models/ExternalOffer.js";
 import ListingView from "./models/ListingView.js";
 import ListingViewEvent from "./models/ListingViewEvent.js";
 import { protect } from "./middleware/authMiddleware.js";
@@ -117,7 +118,19 @@ const MONGODB_URI =
 
 mongoose
   .connect(MONGODB_URI)
-  .then(() => console.log("✅ MongoDB conectat"))
+  .then(async () => {
+    console.log("✅ MongoDB conectat");
+    // Pornire inițială după deploy/restart: nu așteaptă până la cronul de la 10:15 sau 16:15.
+    // Limita zilnică, blocarea concurenței și verificarea duplicatelor rămân obligatorii.
+    if (process.env.PUBLIC_OFFERS_ENABLED !== "false") {
+      try {
+        await ExternalOffer.init();
+        console.log("Oferte externe / pornire:", await publishPublicOfferReferences());
+      } catch (error) {
+        console.error("Oferte externe / eroare la pornire:", error.message);
+      }
+    }
+  })
   .catch((err) => {
     console.error("❌ Eroare MongoDB:", err);
     process.exit(1);
