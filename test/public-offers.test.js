@@ -60,7 +60,7 @@ test("nu ghicește prețul dacă este lipsă și nu adaugă imagini", () => {
 });
 
 test("exclude necondiționat publicația indicată de proprietarul portalului", () => {
-  assert.equal(PUBLIC_OFFER_FEEDS.length, 0);
+  assert.ok(PUBLIC_OFFER_FEEDS.every((source) => !isExcludedExternalSource(source.feedUrl, source.name)));
   assert.equal(isExcludedExternalSource("https://olteniteanul.ro/anunturi/"), true);
   assert.equal(isExcludedExternalSource("https://www.olteniteanul.ro/anunturi/"), true);
   assert.equal(isExcludedExternalSource("https://facebook.com/olteniteanul/posts/123"), true);
