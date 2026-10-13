@@ -1,4 +1,5 @@
 import { canonicalCalarasiLocality, isCalarasiCounty, normalizePlace } from "../data/calarasiLocalities.js";
+import { isExcludedExternalSource } from "./publicOfferFeed.js";
 
 const CATEGORIES = new Map([
   ["apartamente", "Apartamente"], ["garsoniere", "Garsoniere"], ["case", "Case"],
@@ -32,6 +33,7 @@ export function validateImportedOffer(raw) {
     return { ok: false, error: "Lipsește acordul verificabil de republicare (rightsGranted, consentReference)" };
   }
   if (!/^https:\/\//i.test(sourceUrl) || sourceUrl.length > 1500) return { ok: false, error: "sourceUrl HTTPS obligatoriu" };
+  if (isExcludedExternalSource(sourceUrl, o.sourceName || "")) return { ok: false, error: "Sursă exclusă explicit" };
   if (o.available !== true) return { ok: false, error: "Oferta nu este confirmată ca disponibilă" };
   if (o.currency && String(o.currency).toUpperCase() !== "EUR") return { ok: false, error: "Doar prețuri EUR" };
   if (!category || !["vand", "inchiriez", "vanzare", "inchiriere"].includes(normalizePlace(o.intent))) {
