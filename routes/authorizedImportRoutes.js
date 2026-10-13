@@ -5,6 +5,7 @@ import ImportOffer from "../models/ImportOffer.js";
 import Listing from "../models/Listing.js";
 import { validateImportedOffer } from "../utils/importValidation.js";
 import { localDayKey, publishAuthorizedOffers } from "../utils/authorizedPublisher.js";
+import { pullAuthorizedLukianFeeds, readLukianFeeds } from "../utils/lukianFeedPoller.js";
 
 const router = express.Router();
 const limiter = rateLimit({ windowMs: 15 * 60000, limit: 50, standardHeaders: "draft-7", legacyHeaders: false });
@@ -116,12 +117,15 @@ router.get("/status", checkAdmin, async (_req, res) => {
     ok: true, enabled: process.env.AUTOPUBLISH_ENABLED === "true", day,
     publishedToday, dailyLimit: 2, pending, publishedTotal,
     authorizedSources: Object.keys(sourceSecrets()).length,
+    authorizedLukianFeedsConfigured: readLukianFeeds().length,
   });
 });
 
 router.post("/run", checkAdmin, async (_req, res) => {
   try {
-    return res.json(await publishAuthorizedOffers());
+    const pulled = await pullAuthorizedLukianFeeds();
+    const publishing = await publishAuthorizedOffers();
+    return res.json({ pull: pulled, publishing });
   } catch (error) {
     console.error("Autopublicare:", error);
     return res.status(500).json({ error: "Autopublicarea a eșuat. Verifică logurile." });
