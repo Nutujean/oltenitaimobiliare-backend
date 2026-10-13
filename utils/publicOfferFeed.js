@@ -2,7 +2,15 @@ import { canonicalCalarasiLocality, CALARASI_LOCALITIES, normalizePlace } from "
 
 // Sursele se înscriu aici doar după verificarea dreptului de a agrega linkuri.
 // NU sunt înscrise implicit niciun site și nicio pagină Facebook.
-export const PUBLIC_OFFER_FEEDS = Object.freeze([]);
+export const PUBLIC_OFFER_FEEDS = Object.freeze([
+  {
+    id: "anuntul-calarasi-linkuri",
+    name: "Anuntul.ro",
+    type: "html",
+    origin: "https://www.anuntul.ro",
+    feedUrl: "https://www.anuntul.ro/anunturi-imobiliare-vanzari/toate/judetul-calarasi",
+  },
+]);
 
 export function isExcludedExternalSource(urlValue = "", sourceName = "") {
   const normalizedName = normalizePlace(sourceName).replace(/\s+/g, "");
