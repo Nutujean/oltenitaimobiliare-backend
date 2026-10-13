@@ -41,7 +41,7 @@ async function getFeed(source, fetchImpl) {
   try {
     const response = await fetchImpl(source.feedUrl, {
       headers: { "Accept": source.type === "html" ? "text/html" : "application/rss+xml, application/xml;q=0.9",
-        "User-Agent": "OltenitaImobiliare-LinkDirectory/1.0 (contact: oltenitaimobiliare@gmail.com)" },
+        "User-Agent": "Mozilla/5.0 (compatible; OltenitaImobiliare-LinkDirectory/1.0; +https://oltenitaimobiliare.ro/)" },
       signal: controller.signal, redirect: "follow",
     });
     if (!response.ok || new URL(response.url).origin !== source.origin) {
@@ -75,7 +75,7 @@ async function lease(now) {
 }
 
 export async function publishPublicOfferReferences({ fetchImpl = fetch, now = new Date() } = {}) {
-  if (process.env.PUBLIC_OFFERS_ENABLED !== "true") return { status: "disabled", published: 0 };
+  if (process.env.PUBLIC_OFFERS_ENABLED === "false") return { status: "disabled", published: 0 };
   const eligibleSources = PUBLIC_OFFER_FEEDS.filter((source) => !isExcludedExternalSource(source.feedUrl, source.name));
   if (!eligibleSources.length) return { status: "unconfigured", published: 0 };
   const owner = await lease(now);
