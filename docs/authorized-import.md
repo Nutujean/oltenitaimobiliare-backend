@@ -57,3 +57,45 @@ Formatele acceptate: categorie `Apartamente`, `Garsoniere`, `Case`, `Terenuri`, 
 1. Acordul și fluxul tehnic de la **cel puțin o agenție/proprietar** din județ.
 2. Configurarea cheii și `AUTOPUBLISH_ENABLED=true` în Render, după audit/test pe mediu de test.
 3. Deploy-ul codului după verificarea importului (PR, verificare indexuri). Dacă nu există oferte valide într-o zi, **nu se inventează anunțuri**.
+
+
+## Conector automat Lukian CRM (pull, fără intervenție zilnică)
+
+Sursă de documentație: https://lukian.ai/ro/portaluri-imobiliare/feed-api
+
+Serverul poate citi automat `GET /api/v2/portals/{portal}/feed.json` de pe `api.lukian.ai`, mapând datele în formatul intern, apoi rulează publicarea zilnică, maxim două anunțuri/zi.
+
+**IMPORTANT:** acest endpoint necesită o cheie emisă de Lukian pentru portal. Documentația publică NU înseamnă că s-a primit o cheie și nici că toate agențiile au aprobat republicarea. Este nevoie de acord explicit pentru texte, fotografii și afișarea telefonului agentului.
+
+### Activare, o singură dată, după obținerea contractului/accesului
+
+În Render → Environment → backend:
+
+```env
+AUTOPUBLISH_ENABLED=true
+AUTHORIZED_LUKIAN_FEEDS_JSON=[{"sourceId":"lukian_calarasi","portal":"SLUG_EMIS_DE_LUKIAN","apiKey":"CHEIE_PRIMITA_DE_LA_LUKIAN_MIN_16_CARACTERE","consentReference":"ACORD-CONTRACTUAL-REAL","rightsConfirmed":true,"activeOnlyConfirmed":true,"allowedAgencyIds":["ID_REAL_AGENTIE"]}]
+```
+
+**Atenție:** valorile sunt șabloane, nu chei sau agenții reale. Nu publica cheia în GitHub. Pentru a completa `rightsConfirmed`, acordul trebuie să precizeze drepturile asupra anunțurilor/fotografiilor și datele de contact. `allowedAgencyIds` conține doar agențiile care au autorizat publicarea pe oltenitaimobiliare.ro. Pentru alimentare neîntreruptă, furnizorul trebuie să aibă efectiv proprietăți active în județul Călărași.
+
+Schema feedului Lukian v2 documentată conține `location.city` dar **nu garantează `location.county`**. În lipsa județului per proprietate, automatizarea NU publică nimic din acel rând. Doar dacă furnizorul certifică în scris că feedul/contul conține EXCLUSIV proprietăți în județul Călărași se poate adăuga `"countyScopeConfirmed":"Călărași"`. Orice județ diferit menționat explicit în feed blochează oferta oricum.
+
+Dacă furnizorul confirmă că feedul este complet la fiecare citire și că ofertele eliminate lipsesc din snapshot, se poate adăuga `"completeSnapshotConfirmed":true`. Numai atunci o ofertă dispărută din feed este retrasă după minimum 24 de ore. Altfel rămâne valabilă doar cât timp feedul o reconfirmă, cu expirare automată după cel mult 30 de zile de la ultima actualizare. Retragerea explicită prin status se aplică imediat.
+
+- Cronul serverului: de la 09:00 la 21:00, o dată pe oră, `Europe/Bucharest`, citește feedul și apoi încearcă publicarea (maximum 2 pe zi).
+- Prioritizează proprietățile actualizate recent și nu depășește 1.000 de înregistrări procesate per feed/rulare.
+- Verificări: localitate/județ, sursă, agenții licențiate, fotografii, telefon, preț EUR, lipsă duplicat, statut activ.
+- Sync fără duplicare: dacă oferta este deja publicată, se actualizează anunțul existent; nu se creează altul.
+- Monitorizare: `GET /api/authorized-import/status` (admin) indică și `authorizedLukianFeedsConfigured`.
+- Test manual: `POST /api/authorized-import/run` (admin) face pull și publicare, respectând siguranțele.
+- Fără `AUTOPUBLISH_ENABLED=true` sau fără `AUTHORIZED_LUKIAN_FEEDS_JSON` valid => **zero importuri**.
+
+### Cerere de acces de trimis furnizorului
+
+Subiect: Parteneriat portal local OltenitaImobiliare.ro – feed imobiliar Călărași
+
+Bună ziua,
+Administrăm OltenitaImobiliare.ro, un portal imobiliar dedicat exclusiv județului Călărași. Dorim integrarea unui feed JSON/Push cu proprietăți reale și active din județ, pentru afișare cu numele și telefonul agenției. Ne puteți confirma dacă există oferte disponibile pentru județul Călărași, condițiile de acces API pentru portal, drepturile de republicare a textelor/fotografiilor și modul de sincronizare a ofertelor retrase? Implementarea tehnică este pregătită; ne-ar ajuta un cont de test și documentele contractuale pentru acord.
+
+Mulțumim,
+Echipa OltenitaImobiliare.ro

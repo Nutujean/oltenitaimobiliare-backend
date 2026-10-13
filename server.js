@@ -28,6 +28,7 @@ import sitemapRoute from "./routes/sitemapRoutes.js";
 import listingSeoRoutes from "./routes/listingSeoRoutes.js";
 import authorizedImportRoutes from "./routes/authorizedImportRoutes.js";
 import { publishAuthorizedOffers } from "./utils/authorizedPublisher.js";
+import { pullAuthorizedLukianFeeds } from "./utils/lukianFeedPoller.js";
 import anunturileMeleRoute from "./routes/anunturileMele.js";
 
 dotenv.config();
@@ -324,6 +325,8 @@ app.use((req, res) => {
 cron.schedule("0 9-21 * * *", async () => {
   if (process.env.AUTOPUBLISH_ENABLED !== "true") return;
   try {
+    const fetched = await pullAuthorizedLukianFeeds();
+    if (fetched.feeds || fetched.errors) console.log("🏘️ Flux surse licențiate:", fetched);
     const result = await publishAuthorizedOffers();
     if (result.published || result.status !== "ok") console.log("🏘️ Import autorizat:", result);
   } catch (error) {
