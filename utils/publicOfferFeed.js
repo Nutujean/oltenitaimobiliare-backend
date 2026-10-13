@@ -1,10 +1,26 @@
 import { canonicalCalarasiLocality, CALARASI_LOCALITIES, normalizePlace } from "../data/calarasiLocalities.js";
 
-export const PUBLIC_OFFER_FEEDS = Object.freeze([
-  { id: "anuntul-calarasi-vanzari", name: "Anuntul.ro",
-    feedUrl: "https://www.anuntul.ro/anunturi-imobiliare-vanzari/toate/judetul-calarasi",
-    origin: "https://www.anuntul.ro", type: "html" },
-]);
+// Sursele se înscriu aici doar după verificarea dreptului de a agrega linkuri.
+// NU sunt înscrise implicit niciun site și nicio pagină Facebook.
+export const PUBLIC_OFFER_FEEDS = Object.freeze([]);
+
+export function isExcludedExternalSource(urlValue = "", sourceName = "") {
+  const normalizedName = normalizePlace(sourceName).replace(/\\s+/g, "");
+  if (normalizedName.includes("olteniteanul")) return true;
+  try {
+    const url = new URL(String(urlValue));
+    const host = url.hostname.toLowerCase();
+    if (host === "olteniteanul.ro" || host.endsWith(".olteniteanul.ro")) return true;
+    if (host === "fb.com" || host === "www.fb.com" ||
+        host === "facebook.com" || host.endsWith(".facebook.com") ||
+        host === "m.facebook.com") {
+      const pathname = decodeURIComponent(url.pathname).normalize("NFD")
+        .replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+      if (pathname.includes("olteniteanul")) return true;
+    }
+  } catch { return false; }
+  return false;
+}
 
 function decode(str) {
   const named = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " ", euro: "€", ndash: "–", mdash: "—" };
@@ -70,7 +86,9 @@ function parsePriceEUR(text) {
 }
 
 export function normalizeRssOffer(item, source, now = new Date()) {
-  if (!item || !source || typeof source.origin !== "string") return null;
+  if (!item || !source || typeof source.origin !== "string" ||
+      isExcludedExternalSource(item.link, source.name) ||
+      isExcludedExternalSource(source.origin, source.name)) return null;
   const title = String(item.title || "").trim().replace(/\s+/g, " ");
   const excerpt = String(item.excerpt || "").trim();
   const plain = normalizePlace(title + " " + excerpt);
