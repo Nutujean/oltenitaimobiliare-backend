@@ -123,7 +123,12 @@ export async function pullAuthorizedLukianFeeds({ fetchImpl = fetch, now = new D
       const agencies = Object.fromEntries(snapshot.agencies.map((a) => [String(a.id), a]));
       const seen = new Set();
       // Doar agențiile explicit permise și doar proprietățile eligibile.
-      for (const property of snapshot.properties.slice(0, MAX_PER_RUN)) {
+      const latestFirst = [...snapshot.properties].sort((a, b) => {
+        const left = Date.parse(a?.updated_at || a?.created_at || "") || 0;
+        const right = Date.parse(b?.updated_at || b?.created_at || "") || 0;
+        return right - left;
+      });
+      for (const property of latestFirst.slice(0, MAX_PER_RUN)) {
         const agencyId = String(property?.agency_id || "");
         const id = String(property?.id ?? "").trim();
         if (!config.allowedAgencyIds.includes(agencyId) || !id) {
@@ -142,6 +147,15 @@ export async function pullAuthorizedLukianFeeds({ fetchImpl = fetch, now = new D
 
         const checked = mapLukianProperty(property, config, agencies);
         if (!checked.ok) {
+          // O ofertă care își pierde județul verificabil, drepturile sau pozele
+          // nu poate rămâne publică prin simpla actualizare a feedului.
+          const previous = await ImportOffer.exists({
+            sourceId: config.sourceId, externalId, status: "published",
+          });
+          if (previous) {
+            await withdraw(config.sourceId, externalId);
+            summary.withdrawn++;
+          }
           summary.rejected++;
           continue;
         }
