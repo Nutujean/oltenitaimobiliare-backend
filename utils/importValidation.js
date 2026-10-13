@@ -55,3 +55,10 @@ export function validateImportedOffer(raw) {
     },
   };
 }
+
+export function missingFromCompleteSnapshot(record, seenIds, now = new Date()) {
+  const lastSeen = record?.lastSeenAt ? new Date(record.lastSeenAt).getTime() : NaN;
+  return Number.isFinite(lastSeen) &&
+    lastSeen < now.getTime() &&
+    !seenIds.has(String(record.externalId || ""));
+}

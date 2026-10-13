@@ -1,6 +1,7 @@
 import Listing from "../models/Listing.js";
 import ImportOffer from "../models/ImportOffer.js";
 import { mapLukianProperty, validLukianFeedConfig } from "./lukianFeedMapping.js";
+import { missingFromCompleteSnapshot } from "./importValidation.js";
 
 const MAX_FEED_BYTES = 15 * 1024 * 1024;
 const MAX_PROPERTIES = 25000;
@@ -168,6 +169,18 @@ export async function pullAuthorizedLukianFeeds({ fetchImpl = fetch, now = new D
       // confirmat contractual. Așteptăm >=24h pentru a evita întreruperile scurte.
       if (config.completeSnapshotConfirmed === true &&
         snapshot.properties.length <= MAX_PER_RUN) {
+        // Un anunț care nu mai apare în feedul complet NU trebuie publicat
+        // ulterior din coada de așteptare, chiar dacă fusese valid anterior.
+        const missingQueued = await ImportOffer.find({
+          sourceId: config.sourceId, status: "queued",
+          lastSeenAt: { $lt: now },
+        }).select("externalId").lean();
+        for (const queued of missingQueued) {
+          if (missingFromCompleteSnapshot(queued, seen, now)) {
+            await withdraw(config.sourceId, queued.externalId);
+            summary.withdrawn++;
+          }
+        }
         const stale = await ImportOffer.find({
           sourceId: config.sourceId, status: "published",
           lastSeenAt: { $lt: new Date(now.getTime() - 24 * 3600000) },
