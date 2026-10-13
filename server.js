@@ -27,6 +27,8 @@ import shareRoutes from "./routes/shareRoute.js";
 import sitemapRoute from "./routes/sitemapRoutes.js";
 import listingSeoRoutes from "./routes/listingSeoRoutes.js";
 import authorizedImportRoutes from "./routes/authorizedImportRoutes.js";
+import publicOffersRoutes from "./routes/publicOffersRoutes.js";
+import { publishPublicOfferReferences } from "./utils/publicOffersPublisher.js";
 import { publishAuthorizedOffers } from "./utils/authorizedPublisher.js";
 import { pullAuthorizedLukianFeeds } from "./utils/lukianFeedPoller.js";
 import anunturileMeleRoute from "./routes/anunturileMele.js";
@@ -255,6 +257,7 @@ app.use("/api", anunturileMeleRoute);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/authorized-import", authorizedImportRoutes);
+app.use("/api/oferte-externe", publicOffersRoutes);
 
 app.use("/", sitemapRoute);
 
@@ -319,6 +322,17 @@ app.use((req, res) => {
   }
   res.status(404).send("Not found");
 });
+
+// Mențiuni externe cu sursă clară, fără imagini sau telefon copiat.
+ // Flux complet separat: nu modifică niciun anunț al utilizatorilor, Stripe sau free cooldown.
+cron.schedule("15 10,16 * * *", async () => {
+  if (process.env.PUBLIC_OFFERS_ENABLED !== "true") return;
+  try {
+    console.log("RSS Oferte externe:", await publishPublicOfferReferences());
+  } catch (err) {
+    console.error("Eroare RSS oferte externe:", err.message);
+  }
+}, { timezone: "Europe/Bucharest", noOverlap: true });
 
 // Rulează orar în timpul zilei, însă publică maximum 2 oferte pe zi calendaristică (București).
 // În absența surselor autorizate/activării, nu publică nimic.
