@@ -26,6 +26,8 @@ import contactRoutes from "./routes/contactRoutes.js";
 import shareRoutes from "./routes/shareRoute.js";
 import sitemapRoute from "./routes/sitemapRoutes.js";
 import listingSeoRoutes from "./routes/listingSeoRoutes.js";
+import authorizedImportRoutes from "./routes/authorizedImportRoutes.js";
+import { publishAuthorizedOffers } from "./utils/authorizedPublisher.js";
 import anunturileMeleRoute from "./routes/anunturileMele.js";
 
 dotenv.config();
@@ -251,6 +253,7 @@ app.use("/api/listings", listingsRoutes);
 app.use("/api", anunturileMeleRoute);
 app.use("/api/stripe", stripeRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/authorized-import", authorizedImportRoutes);
 
 app.use("/", sitemapRoute);
 
@@ -316,6 +319,18 @@ app.use((req, res) => {
   res.status(404).send("Not found");
 });
 
+// Rulează orar în timpul zilei, însă publică maximum 2 oferte pe zi calendaristică (București).
+// În absența surselor autorizate/activării, nu publică nimic.
+cron.schedule("0 9-21 * * *", async () => {
+  if (process.env.AUTOPUBLISH_ENABLED !== "true") return;
+  try {
+    const result = await publishAuthorizedOffers();
+    if (result.published || result.status !== "ok") console.log("🏘️ Import autorizat:", result);
+  } catch (error) {
+    console.error("❌ Eroare import autorizat:", error.message);
+  }
+}, { timezone: "Europe/Bucharest", noOverlap: true });
+
 cron.schedule("0 3 * * *", async () => {
   try {
     const now = new Date();
@@ -325,6 +340,7 @@ cron.schedule("0 3 * * *", async () => {
     in2DaysEnd.setHours(23, 59, 59, 999);
 
     const expiringSoon = await Listing.find({
+      importSourceId: { $exists: false },
       visibility: "public",
       status: "disponibil",
       expiresAt: { $gte: in2DaysStart, $lte: in2DaysEnd },
@@ -352,6 +368,7 @@ cron.schedule("0 3 * * *", async () => {
     }
 
     const toExpire = await Listing.find({
+      importSourceId: { $exists: false },
       status: "disponibil",
       expiresAt: { $lt: now },
       $or: [{ featuredUntil: null }, { featuredUntil: { $lt: now } }],
