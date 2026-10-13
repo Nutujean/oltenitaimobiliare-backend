@@ -68,3 +68,20 @@ jobs:
             except Exception as e:
               print("URL",url,"ERROR",str(e))
           PY
+
+  inspect-robots:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read Anuntul.ro public robots.txt
+        run: |
+          python3 - <<'PY'
+          from urllib.request import Request,urlopen
+          try:
+            with urlopen(Request("https://www.anuntul.ro/robots.txt",headers={"User-Agent":"Mozilla/5.0"}),timeout=17) as r:
+              print("HTTP",r.status)
+              for line in r.read(100000).decode("utf-8","replace").splitlines()[:240]:
+                if "disallow" in line.lower() or "user-agent" in line.lower() or "crawl-delay" in line.lower():
+                  print(line)
+          except Exception as error:
+            print("ERROR",type(error).__name__,str(error))
+          PY
