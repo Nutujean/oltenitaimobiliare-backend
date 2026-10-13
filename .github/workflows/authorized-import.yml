@@ -5,12 +5,15 @@ on:
       - 'data/calarasiLocalities.js'
       - 'utils/importValidation.js'
       - 'utils/authorizedPublisher.js'
+      - 'utils/lukianFeedMapping.js'
+      - 'utils/lukianFeedPoller.js'
       - 'models/ImportOffer.js'
       - 'models/ImportLease.js'
       - 'models/Listing.js'
       - 'routes/authorizedImportRoutes.js'
       - 'server.js'
       - 'test/authorized-import.test.js'
+      - 'test/lukian-feed.test.js'
       - '.github/workflows/authorized-import.yml'
 jobs:
   validate:
@@ -29,6 +32,8 @@ jobs:
           node --check data/calarasiLocalities.js
           node --check utils/importValidation.js
           node --check utils/authorizedPublisher.js
+          node --check utils/lukianFeedMapping.js
+          node --check utils/lukianFeedPoller.js
           node --check routes/authorizedImportRoutes.js
       - name: Validate county and rights safeguards
-        run: node --test test/authorized-import.test.js
+        run: node --test test/authorized-import.test.js test/lukian-feed.test.js
