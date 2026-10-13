@@ -6,6 +6,7 @@ on:
       - 'utils/publicOfferFeed.js'
       - 'utils/publicOffersPublisher.js'
       - 'test/public-offers.test.js'
+      - 'test/anuntul-index.test.js'
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -17,11 +18,12 @@ jobs:
       - name: Syntax and exclusion tests
         run: |
           node --check utils/publicOfferFeed.js
+          node --check utils/anuntulIndex.js
           node --check utils/publicOffersPublisher.js
           node --check models/ExternalOffer.js
           node --check routes/publicOffersRoutes.js
           node --check server.js
-          node --test test/public-offers.test.js
+          node --test test/public-offers.test.js test/anuntul-index.test.js
 
   inspect-source:
     runs-on: ubuntu-latest
@@ -85,3 +87,24 @@ jobs:
           except Exception as error:
             print("ERROR",type(error).__name__,str(error))
           PY
+
+  live-adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate live listing link discovery (no publishing)
+        run: |
+          node --input-type=module <<'JS'
+          import { PUBLIC_OFFER_FEEDS } from "./utils/publicOfferFeed.js";
+          import { parseAnuntulIndex } from "./utils/anuntulIndex.js";
+          const source=PUBLIC_OFFER_FEEDS[0];
+          const response=await fetch(source.feedUrl,{headers:{"User-Agent":"Mozilla/5.0","Accept":"text/html"}});
+          if(!response.ok) throw Error("Source HTTP "+response.status);
+          const offers=parseAnuntulIndex(await response.text(),source);
+          console.log("Identified Calarasi property references:",offers.length);
+          for(const offer of offers.slice(0,4)) console.log(offer.locality,offer.title,offer.priceEUR,offer.sourceUrl);
+          if(!offers.length) throw Error("No verified offers parsed from live source");
+          JS
