@@ -1,0 +1,34 @@
+name: Verify authorized property imports
+on:
+  pull_request:
+    paths:
+      - 'data/calarasiLocalities.js'
+      - 'utils/importValidation.js'
+      - 'utils/authorizedPublisher.js'
+      - 'models/ImportOffer.js'
+      - 'models/ImportLease.js'
+      - 'models/Listing.js'
+      - 'routes/authorizedImportRoutes.js'
+      - 'server.js'
+      - 'test/authorized-import.test.js'
+      - '.github/workflows/authorized-import.yml'
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax checks
+        run: |
+          node --check server.js
+          node --check models/Listing.js
+          node --check models/ImportOffer.js
+          node --check models/ImportLease.js
+          node --check data/calarasiLocalities.js
+          node --check utils/importValidation.js
+          node --check utils/authorizedPublisher.js
+          node --check routes/authorizedImportRoutes.js
+      - name: Validate county and rights safeguards
+        run: node --test test/authorized-import.test.js

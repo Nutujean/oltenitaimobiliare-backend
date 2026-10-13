@@ -148,6 +148,16 @@ const ListingSchema = new Schema(
     },
 
     // =========================
+    // IMPORT AUTORIZAT (SEPARAT DE PUBLICAREA UTILIZATORILOR)
+    // =========================
+    importSourceId: { type: String, default: undefined },
+    importExternalId: { type: String, default: undefined },
+    importSourceUrl: { type: String, default: undefined },
+    importConsentReference: { type: String, default: undefined },
+    importedAt: { type: Date, default: undefined },
+    importedDay: { type: String, default: undefined },
+
+    // =========================
     // REGULĂ FREE / PAID
     // =========================
     isFree: {
@@ -182,5 +192,10 @@ ListingSchema.index({ views: -1 });
 ListingSchema.index({ lastViewedAt: -1 });
 ListingSchema.index({ rezervat: 1 });
 ListingSchema.index({ vandut: 1 });
+ListingSchema.index({ importedDay: 1 });
+ListingSchema.index(
+  { importSourceId: 1, importExternalId: 1 },
+  { unique: true, partialFilterExpression: { importSourceId: { $type: "string" }, importExternalId: { $type: "string" } } }
+);
 
 export default mongoose.model("Listing", ListingSchema);
