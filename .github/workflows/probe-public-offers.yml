@@ -1,4 +1,4 @@
-name: Probe alternative property feeds
+name: Verify nonexcluded external references
 on:
   pull_request:
     paths:
@@ -7,30 +7,18 @@ on:
       - 'utils/publicOffersPublisher.js'
       - 'test/public-offers.test.js'
 jobs:
-  probe:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect Anuntul.ro Calarasi real-estate index (read only)
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax and exclusion tests
         run: |
-          python3 - <<'PY'
-          import urllib.request,re,json
-          u="https://www.anuntul.ro/anunturi-imobiliare-vanzari/toate/judetul-calarasi"
-          req=urllib.request.Request(u,headers={"User-Agent":"Mozilla/5.0 (compatible; OltenitaImobiliare-LinkDiscovery/1.0)"})
-          try:
-            with urllib.request.urlopen(req,timeout=22) as r:
-              text=r.read(2_000_000).decode("utf8","replace")
-              print("STATUS",r.status,"HTML_BYTES",len(text),"URL",r.url)
-              print("RSS_LINKS",re.findall(r'<link[^>]+(?:application/rss\\+xml|/feed/)[^>]*>',text,re.I)[:4])
-              print("JSONLD_COUNT",len(re.findall(r'application/ld\\+json',text,re.I)))
-              print("ARTICLE_LINK_SAMPLES",re.findall(r'(?:href=)["\\\']([^"\\\']*/anunt/[^"\\\']+)',text,re.I)[:8])
-              for term in ["59.900", "16.000", "Oltenita", "Calarasi", "data-product-id", "productData", "itemprop"]:
-                i=text.find(term)
-                print("TERM",term,"FOUND",i>=0,"SNIPPET",text[max(0,i-100):i+210].replace("\n"," ")[:310] if i>=0 else "")
-              i=text.find("59.900 €")
-              print("CARD_HTML_BEGIN",text[max(0,i-2900):i+900].replace("\n"," "))
-              print("ARTICLE_HREF_COUNT",len(re.findall(r'href=["\\\']/anunt-',text)))
-              print("ARTICLE_HREF_SAMPLES",re.findall(r'href=["\\\'](/anunt-[^"\\\']+)',text)[:8])
-          except Exception as e:
-            print("ERROR",type(e).__name__,str(e))
-            raise
-          PY
+          node --check utils/publicOfferFeed.js
+          node --check utils/publicOffersPublisher.js
+          node --check models/ExternalOffer.js
+          node --check routes/publicOffersRoutes.js
+          node --check server.js
+          node --test test/public-offers.test.js
