@@ -67,6 +67,7 @@ test("respinge localități din alte județe și alte agenții", () => {
 test("nu permite proprietăți fără poze, preț în euro sau descriere verificabilă", () => {
   for (const patch of [
     { photos: [] },
+    { id: null },
     { currency: "RON" },
     { property_type: "hotel" },
     { description: "<p>ok</p>" },
