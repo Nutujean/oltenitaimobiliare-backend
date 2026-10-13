@@ -168,6 +168,18 @@ export async function pullAuthorizedLukianFeeds({ fetchImpl = fetch, now = new D
       // confirmat contractual. Așteptăm >=24h pentru a evita întreruperile scurte.
       if (config.completeSnapshotConfirmed === true &&
         snapshot.properties.length <= MAX_PER_RUN) {
+        // Un anunț care nu mai apare în feedul complet NU trebuie publicat
+        // ulterior din coada de așteptare, chiar dacă fusese valid anterior.
+        const missingQueued = await ImportOffer.find({
+          sourceId: config.sourceId, status: "queued",
+          lastSeenAt: { $lt: now },
+        }).select("externalId").lean();
+        for (const queued of missingQueued) {
+          if (!seen.has(queued.externalId)) {
+            await withdraw(config.sourceId, queued.externalId);
+            summary.withdrawn++;
+          }
+        }
         const stale = await ImportOffer.find({
           sourceId: config.sourceId, status: "published",
           lastSeenAt: { $lt: new Date(now.getTime() - 24 * 3600000) },
