@@ -1,12 +1,16 @@
-name: Verify nonexcluded external references
+name: Verify external Calarasi source references
 on:
   pull_request:
     paths:
       - '.github/workflows/probe-public-offers.yml'
       - 'utils/publicOfferFeed.js'
+      - 'utils/anuntulIndex.js'
       - 'utils/publicOffersPublisher.js'
+      - 'routes/publicOffersRoutes.js'
+      - 'models/ExternalOffer.js'
       - 'test/public-offers.test.js'
       - 'test/anuntul-index.test.js'
+      - 'server.js'
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -15,7 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Syntax and exclusion tests
+      - name: Syntax and Calarasi-only verification
         run: |
           node --check utils/publicOfferFeed.js
           node --check utils/anuntulIndex.js
@@ -24,87 +28,3 @@ jobs:
           node --check routes/publicOffersRoutes.js
           node --check server.js
           node --test test/public-offers.test.js test/anuntul-index.test.js
-
-  inspect-source:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Read Anuntul.ro Calarasi listing card HTML for factual links
-        run: |
-          python3 - <<'PY'
-          import urllib.request,re
-          u="https://www.anuntul.ro/anunturi-imobiliare-vanzari/toate/judetul-calarasi"
-          req=urllib.request.Request(u,headers={"User-Agent":"Mozilla/5.0 (compatible; OltenitaImobiliare-LinkDirectory/1.0)"})
-          try:
-            with urllib.request.urlopen(req,timeout=15) as r:
-              t=r.read(800000).decode("utf-8","replace")
-              print("HTTP",r.status,"LEN",len(t))
-              found=list(re.finditer(r'href=["\\\'](/anunt-[^"\\\']+)',t))
-              print("COUNT",len(found))
-              for m in found[:3]:
-                print("HTML",t[max(0,m.start()-850):m.end()+500].replace("\n"," ")[:1800])
-          except Exception as exc:
-            print(type(exc).__name__,str(exc))
-          PY
-
-  inspect-remax:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Probe REMAX public results without downloading photos
-        run: |
-          python3 - <<'PY'
-          import urllib.request,re
-          for url in [
-            "https://www.remax.ro/vanzare/case/calarasi",
-            "https://www.remax.ro/vanzare/apartamente/calarasi",
-            "https://www.remax.ro/vanzare/terenuri/calarasi",
-          ]:
-            try:
-              request=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"})
-              with urllib.request.urlopen(request,timeout=17) as response:
-                html=response.read(1600000).decode("utf-8","replace")
-                print("URL",url,"STATUS",response.status,"BYTES",len(html))
-                print("REMAX LINKS",re.findall(r'href=["\\\']([^"\\\']*(?:imobiliare|proprietati|de-vanzare|/listing/|/oferta/)[^"\\\']{5,200})',html,re.I)[:12])
-                for term in ["Oltenița", "Oltenita", "Fundulea", "120.000€"]:
-                  pos=html.find(term)
-                  print("TERM",term,"AT",pos,"HTML",html[max(0,pos-500):pos+500].replace("\n"," ") if pos>-1 else "")
-            except Exception as e:
-              print("URL",url,"ERROR",str(e))
-          PY
-
-  inspect-robots:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Read Anuntul.ro public robots.txt
-        run: |
-          python3 - <<'PY'
-          from urllib.request import Request,urlopen
-          try:
-            with urlopen(Request("https://www.anuntul.ro/robots.txt",headers={"User-Agent":"Mozilla/5.0"}),timeout=17) as r:
-              print("HTTP",r.status)
-              for line in r.read(100000).decode("utf-8","replace").splitlines()[:240]:
-                if "disallow" in line.lower() or "user-agent" in line.lower() or "crawl-delay" in line.lower():
-                  print(line)
-          except Exception as error:
-            print("ERROR",type(error).__name__,str(error))
-          PY
-
-  live-adapter:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Validate live listing link discovery (no publishing)
-        run: |
-          node --input-type=module <<'JS'
-          import { PUBLIC_OFFER_FEEDS } from "./utils/publicOfferFeed.js";
-          import { parseAnuntulIndex } from "./utils/anuntulIndex.js";
-          const source=PUBLIC_OFFER_FEEDS[0];
-          const response=await fetch(source.feedUrl,{headers:{"User-Agent":"Mozilla/5.0","Accept":"text/html"}});
-          if(!response.ok) throw Error("Source HTTP "+response.status);
-          const offers=parseAnuntulIndex(await response.text(),source);
-          console.log("Identified Calarasi property references:",offers.length);
-          for(const offer of offers.slice(0,4)) console.log(offer.locality,offer.title,offer.priceEUR,offer.sourceUrl);
-          if(!offers.length) throw Error("No verified offers parsed from live source");
-          JS
