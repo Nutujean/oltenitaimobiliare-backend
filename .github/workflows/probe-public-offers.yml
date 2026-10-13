@@ -22,3 +22,26 @@ jobs:
           node --check routes/publicOffersRoutes.js
           node --check server.js
           node --test test/public-offers.test.js
+
+  inspect-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check public listing HTML structure
+        run: |
+          python3 - <<'PY'
+          from urllib.request import urlopen,Request
+          import re
+          u="https://www.publi24.ro/anunturi/imobiliare/calarasi/"
+          try:
+            with urlopen(Request(u,headers={"User-Agent":"Mozilla/5.0"}),timeout=18) as r:
+              html=r.read(1800000).decode("utf-8","replace")
+              print("HTTP",r.status,"url",r.url,"len",len(html))
+              print("TITLE",re.findall(r"<title[^>]*>(.*?)</title>",html,re.S|re.I)[:1])
+              print("LINK SAMPLES",re.findall(r'href="([^"]{20,200})"',html,re.I)[:30])
+              print("JSONLD",len(re.findall(r'application/ld\\+json',html)))
+              for term in ["Casa de vanzare","Casă de vânzare","Oltenita", "Calarasi", "data-id", "data-testid", "classified-card"]:
+                m=re.search(re.escape(term),html,re.I)
+                print("TERM",term,"AT",m.start() if m else -1,"CONTEXT",html[max(0,m.start()-260):m.start()+350].replace("\n"," ") if m else "")
+          except Exception as e:
+            print("ACCESS",type(e).__name__,str(e))
+          PY
