@@ -1,6 +1,7 @@
 import Listing from "../models/Listing.js";
 import ImportOffer from "../models/ImportOffer.js";
 import { mapLukianProperty, validLukianFeedConfig } from "./lukianFeedMapping.js";
+import { missingFromCompleteSnapshot } from "./importValidation.js";
 
 const MAX_FEED_BYTES = 15 * 1024 * 1024;
 const MAX_PROPERTIES = 25000;
@@ -175,7 +176,7 @@ export async function pullAuthorizedLukianFeeds({ fetchImpl = fetch, now = new D
           lastSeenAt: { $lt: now },
         }).select("externalId").lean();
         for (const queued of missingQueued) {
-          if (!seen.has(queued.externalId)) {
+          if (missingFromCompleteSnapshot(queued, seen, now)) {
             await withdraw(config.sourceId, queued.externalId);
             summary.withdrawn++;
           }
