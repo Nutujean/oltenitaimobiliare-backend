@@ -1,14 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PUBLIC_OFFER_FEEDS, parsePropertyRss, normalizeRssOffer } from "../utils/publicOfferFeed.js";
+import { PUBLIC_OFFER_FEEDS, parsePropertyRss, normalizeRssOffer, isExcludedExternalSource } from "../utils/publicOfferFeed.js";
 
-const source = PUBLIC_OFFER_FEEDS[0];
+const source = { id: "example-only", name: "Site exemplu",
+  feedUrl: "https://example.com/feed", origin: "https://example.com" };
 const now = new Date("2026-10-13T09:00:00Z");
 const date = "Mon, 12 Oct 2026 12:00:00 +0000";
 function item(patch = {}) {
   return {
     title: "Casă de vânzare în Oltenița – 75.000 euro",
-    link: "https://www.olteniteanul.ro/casa-de-vanzare-test/",
+    link: "https://example.com/casa-de-vanzare-test/",
     excerpt: "Casă de vânzare în municipiul Oltenița. Informații în anunțul original.",
     date, ...patch,
   };
@@ -16,7 +17,7 @@ function item(patch = {}) {
 test("parserul citește RSS cu CDATA și nu importă corpul complet", () => {
   const xml = '<?xml version="1.0"?><rss version="2.0"><channel><item>' +
     '<title><![CDATA[Casă de vânzare în Oltenița – 75.000 euro]]></title>' +
-    '<link>https://www.olteniteanul.ro/casa-de-vanzare-test/</link>' +
+    '<link>https://example.com/casa-de-vanzare-test/</link>' +
     '<description><![CDATA[<p>Casă în Oltenița. Județul Călărași.</p>]]></description>' +
     '<pubDate>Mon, 12 Oct 2026 12:00:00 +0000</pubDate></item></channel></rss>';
   const parsed = parsePropertyRss(xml);
@@ -29,7 +30,7 @@ test("acceptă numai localitate dovedită din Călărași, cu link la sursă", (
   assert.ok(result);
   assert.equal(result.locality, "Oltenița");
   assert.equal(result.priceEUR, 75000);
-  assert.equal(result.sourceUrl, "https://www.olteniteanul.ro/casa-de-vanzare-test/");
+  assert.equal(result.sourceUrl, "https://example.com/casa-de-vanzare-test/");
   assert.equal(result.summary.includes("Verifică prețul"), true);
   assert.equal(Object.hasOwn(result, "images"), false);
   assert.equal(Object.hasOwn(result, "phone"), false);
@@ -56,4 +57,16 @@ test("nu ghicește prețul dacă este lipsă și nu adaugă imagini", () => {
   assert.ok(result);
   assert.equal(result.priceEUR, null);
   assert.equal(result.category, "Apartamente");
+});
+
+test("exclude necondiționat publicația indicată de proprietarul portalului", () => {
+  assert.equal(PUBLIC_OFFER_FEEDS.length, 0);
+  assert.equal(isExcludedExternalSource("https://olteniteanul.ro/anunturi/"), true);
+  assert.equal(isExcludedExternalSource("https://www.olteniteanul.ro/anunturi/"), true);
+  assert.equal(isExcludedExternalSource("https://facebook.com/olteniteanul/posts/123"), true);
+  assert.equal(isExcludedExternalSource("https://www.facebook.com/Olteniteanul"), true);
+  assert.equal(isExcludedExternalSource("https://facebook.com/altapagina", "Oltenițeanul"), true);
+  assert.equal(isExcludedExternalSource("https://example.com/anunturi/"), false);
+  assert.equal(normalizeRssOffer(item({ link: "https://example.com/ann/" }),
+    { ...source, name: "Oltenițeanul" }, now), null);
 });
